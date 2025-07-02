@@ -3,6 +3,7 @@ import os
 import json
 import logging
 from typing import Any, Dict, List, Optional
+from enum import Enum
 import httpx
 from pydantic import BaseModel, Field
 from mcp.server import Server
@@ -16,6 +17,342 @@ load_dotenv()
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+
+class WorkoutTypeLocation(Enum):
+    """Workout type locations"""
+
+    OUTDOOR = "Outdoor"
+    INDOOR = "Indoor"
+    UNKNOWN = "Unknown"
+
+
+class WorkoutTypeFamily(Enum):
+    """Workout type families"""
+
+    BIKING = "Biking"
+    RUNNING = "Running"
+    WALKING = "Walking"
+    TRACK = "Track"
+    TRAIL = "Trail"
+    SWIMMING = "Swimming"
+    SNOW_SPORT = "Snow Sport"
+    SKATING = "Skating"
+    WATER_SPORTS = "Water Sports"
+    GYM = "Gym"
+    OTHER = "Other"
+    NA = "N/A"
+    UNKNOWN = "Unknown"
+
+
+class WorkoutType(Enum):
+    """Wahoo workout types with their descriptions, locations, and families"""
+
+    # Format: (id, description, location, family)
+    BIKING = (0, "Biking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.BIKING)
+    RUNNING = (1, "Running", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.RUNNING)
+    FE = (2, "Fitness Equipment", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.NA)
+    RUNNING_TRACK = (
+        3,
+        "Running Track",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.TRACK,
+    )
+    RUNNING_TRAIL = (
+        4,
+        "Running Trail",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.TRAIL,
+    )
+    RUNNING_TREADMILL = (
+        5,
+        "Running Treadmill",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.RUNNING,
+    )
+    WALKING = (6, "Walking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WALKING)
+    WALKING_SPEED = (
+        7,
+        "Speed Walking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WALKING,
+    )
+    WALKING_NORDIC = (
+        8,
+        "Nordic Walking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WALKING,
+    )
+    HIKING = (9, "Hiking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WALKING)
+    MOUNTAINEERING = (
+        10,
+        "Mountaineering",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WALKING,
+    )
+    BIKING_CYCLECROSS = (
+        11,
+        "Cyclocross",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_INDOOR = (
+        12,
+        "Indoor Biking",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_MOUNTAIN = (
+        13,
+        "Mountain Biking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_RECUMBENT = (
+        14,
+        "Recumbent Biking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_ROAD = (
+        15,
+        "Road Biking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_TRACK = (
+        16,
+        "Track Biking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    BIKING_MOTOCYCLING = (
+        17,
+        "Motorcycling",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    FE_GENERAL = (
+        18,
+        "General Fitness Equipment",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.NA,
+    )
+    FE_TREADMILL = (
+        19,
+        "Fitness Equipment Treadmill",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.NA,
+    )
+    FE_ELLIPTICAL = (
+        20,
+        "Elliptical",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.GYM,
+    )
+    FE_BIKE = (
+        21,
+        "Fitness Equipment Bike",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.NA,
+    )
+    FE_ROWER = (22, "Rowing Machine", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
+    FE_CLIMBER = (
+        23,
+        "Climbing Machine",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.NA,
+    )
+    SWIMMING_LAP = (
+        25,
+        "Lap Swimming",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.SWIMMING,
+    )
+    SWIMMING_OPEN_WATER = (
+        26,
+        "Open Water Swimming",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.SWIMMING,
+    )
+    SNOWBOARDING = (
+        27,
+        "Snowboarding",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.SNOW_SPORT,
+    )
+    SKIING = (28, "Skiing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.SNOW_SPORT)
+    SKIING_DOWNHILL = (
+        29,
+        "Downhill Skiing",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.SNOW_SPORT,
+    )
+    SKIING_CROSS_COUNTRY = (
+        30,
+        "Cross Country Skiing",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.SNOW_SPORT,
+    )
+    SKATING = (31, "Skating", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.SKATING)
+    SKATING_ICE = (
+        32,
+        "Ice Skating",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.SKATING,
+    )
+    SKATING_INLINE = (
+        33,
+        "Inline Skating",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.SKATING,
+    )
+    LONG_BOARDING = (
+        34,
+        "Longboarding",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.SKATING,
+    )
+    SAILING = (
+        35,
+        "Sailing",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    WINDSURFING = (
+        36,
+        "Windsurfing",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    CANOEING = (
+        37,
+        "Canoeing",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    KAYAKING = (
+        38,
+        "Kayaking",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    ROWING = (39, "Rowing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WATER_SPORTS)
+    KITEBOARDING = (
+        40,
+        "Kiteboarding",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    STAND_UP_PADDLE_BOARD = (
+        41,
+        "Stand Up Paddle Board",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.WATER_SPORTS,
+    )
+    WORKOUT = (42, "Workout", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
+    CARDIO_CLASS = (
+        43,
+        "Cardio Class",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.GYM,
+    )
+    STAIR_CLIMBER = (
+        44,
+        "Stair Climber",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.GYM,
+    )
+    WHEELCHAIR = (
+        45,
+        "Wheelchair",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.OTHER,
+    )
+    GOLFING = (46, "Golfing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.OTHER)
+    OTHER = (47, "Other", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.OTHER)
+    BIKING_INDOOR_CYCLING_CLASS = (
+        49,
+        "Indoor Cycling Class",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    WALKING_TREADMILL = (
+        56,
+        "Walking Treadmill",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.WALKING,
+    )
+    BIKING_INDOOR_TRAINER = (
+        61,
+        "Indoor Trainer",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    MULTISPORT = (62, "Multisport", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.NA)
+    TRANSITION = (63, "Transition", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.NA)
+    EBIKING = (64, "E-Biking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.BIKING)
+    TICKR_OFFLINE = (
+        65,
+        "TICKR Offline",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.NA,
+    )
+    YOGA = (66, "Yoga", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
+    RUNNING_RACE = (
+        67,
+        "Running Race",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.RUNNING,
+    )
+    BIKING_INDOOR_VIRTUAL = (
+        68,
+        "Indoor Virtual Biking",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    MENTAL_STRENGTH = (
+        69,
+        "Mental Strength",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.OTHER,
+    )
+    HANDCYCLING = (
+        70,
+        "Handcycling",
+        WorkoutTypeLocation.OUTDOOR,
+        WorkoutTypeFamily.BIKING,
+    )
+    RUNNING_INDOOR_VIRTUAL = (
+        71,
+        "Indoor Virtual Running",
+        WorkoutTypeLocation.INDOOR,
+        WorkoutTypeFamily.RUNNING,
+    )
+    UNKNOWN = (255, "Unknown", WorkoutTypeLocation.UNKNOWN, WorkoutTypeFamily.UNKNOWN)
+
+    def __init__(
+        self,
+        id: int,
+        description: str,
+        location: WorkoutTypeLocation,
+        family: WorkoutTypeFamily,
+    ):
+        self.id = id
+        self.description = description
+        self.location = location
+        self.family = family
+
+    @classmethod
+    def from_id(cls, workout_type_id: int) -> "WorkoutType":
+        """Get WorkoutType from ID, returns UNKNOWN if not found"""
+        for workout_type in cls:
+            if workout_type.id == workout_type_id:
+                return workout_type
+        return cls.UNKNOWN
+
+    def __str__(self) -> str:
+        return self.description
 
 
 class WahooConfig(BaseModel):
@@ -68,6 +405,14 @@ class Workout(BaseModel):
             return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
         except Exception:
             return self.starts
+
+    def get_workout_type(self) -> WorkoutType:
+        """Get the WorkoutType enum for this workout"""
+        return WorkoutType.from_id(self.workout_type_id)
+
+    def workout_type_description(self) -> str:
+        """Get the human-readable workout type description"""
+        return str(self.get_workout_type())
 
 
 class WahooAPIClient:
@@ -316,11 +661,12 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
                 result = f"Found {len(workouts)} workouts:\n\n"
                 for workout in workouts:
+                    workout_type = workout.get_workout_type()
                     result += f"- ID: {workout.id}\n"
                     result += f"  Name: {workout.name}\n"
                     result += f"  Date: {workout.formatted_start_time()}\n"
                     result += f"  Duration: {workout.duration_str()}\n"
-                    result += f"  Type ID: {workout.workout_type_id}\n"
+                    result += f"  Type: {workout_type.description} ({workout_type.location.value}, {workout_type.family.value})\n"
                     if workout.plan_id:
                         result += f"  Plan ID: {workout.plan_id}\n"
                     if workout.route_id:
@@ -333,11 +679,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 workout_id = arguments["workout_id"]
                 workout = await client.get_workout(workout_id)
 
+                workout_type = workout.get_workout_type()
                 result = f"Workout Details (ID: {workout.id}):\n"
                 result += f"- Name: {workout.name}\n"
                 result += f"- Start Time: {workout.formatted_start_time()}\n"
                 result += f"- Duration: {workout.duration_str()}\n"
-                result += f"- Workout Type ID: {workout.workout_type_id}\n"
+                result += f"- Type: {workout_type.description}\n"
+                result += f"- Location: {workout_type.location.value}\n"
+                result += f"- Family: {workout_type.family.value}\n"
                 result += f"- Workout Token: {workout.workout_token}\n"
 
                 if workout.plan_id:
