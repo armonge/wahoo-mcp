@@ -186,6 +186,51 @@ async def test_wahoo_credentials():
                 print("✅ Success! Credentials are valid")
                 print(f"   Found {len(data.get('workouts', []))} workout(s)")
 
+                # Test the new endpoints
+                print("\n🔍 Testing additional API endpoints...")
+
+                # Test routes endpoint
+                routes_response = await client.get(
+                    "https://api.wahooligan.com/v1/routes",
+                    headers=headers,
+                    params={"page": 1, "per_page": 1},
+                )
+                if routes_response.status_code == 200:
+                    routes_data = routes_response.json()
+                    print(
+                        f"   Routes: ✅ Found {len(routes_data.get('routes', []))} route(s)"
+                    )
+                else:
+                    print(f"   Routes: ❌ Failed ({routes_response.status_code})")
+
+                # Test plans endpoint
+                plans_response = await client.get(
+                    "https://api.wahooligan.com/v1/plans",
+                    headers=headers,
+                    params={"page": 1, "per_page": 1},
+                )
+                if plans_response.status_code == 200:
+                    plans_data = plans_response.json()
+                    print(
+                        f"   Plans: ✅ Found {len(plans_data.get('plans', []))} plan(s)"
+                    )
+                else:
+                    print(f"   Plans: ❌ Failed ({plans_response.status_code})")
+
+                # Test power zones endpoint
+                power_zones_response = await client.get(
+                    "https://api.wahooligan.com/v1/power_zones", headers=headers
+                )
+                if power_zones_response.status_code == 200:
+                    power_zones_data = power_zones_response.json()
+                    print(
+                        f"   Power Zones: ✅ Found {len(power_zones_data.get('power_zones', []))} power zone(s)"
+                    )
+                else:
+                    print(
+                        f"   Power Zones: ❌ Failed ({power_zones_response.status_code})"
+                    )
+
                 # Test refresh token if available
                 if token_data.refresh_token and token_data.code_verifier:
                     print("\n🔄 Testing refresh token...")

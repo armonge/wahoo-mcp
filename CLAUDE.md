@@ -206,7 +206,7 @@ pytest --cov=src --cov-report=html
   "refresh_token": "...",
   "expires_in": 7200,
   "token_type": "Bearer",
-  "scope": "user_read workouts_read"
+  "scope": "user_read workouts_read routes_read plans_read power_zones_read"
 }
 ```
 

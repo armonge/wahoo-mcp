@@ -240,7 +240,7 @@ async def start_server():
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
-        "scope": "user_read workouts_read",
+        "scope": "user_read workouts_read routes_read plans_read power_zones_read",
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
