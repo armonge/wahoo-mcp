@@ -1,5 +1,8 @@
 import pytest
 import time
+import tempfile
+import json
+import os
 from unittest.mock import patch, AsyncMock, MagicMock
 from src.server import WahooAPIClient, WahooConfig
 from src.token_store import TokenStore, TokenData
@@ -7,7 +10,30 @@ from src.token_store import TokenStore, TokenData
 
 @pytest.fixture
 def wahoo_config():
-    return WahooConfig(access_token="test_token")
+    return WahooConfig()
+
+
+@pytest.fixture
+def temp_token_file():
+    """Create a temporary token file with test data"""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        token_data = {
+            "access_token": "test_token",
+            "refresh_token": "test_refresh_token",
+            "code_verifier": "test_verifier",
+            "expires_at": time.time() + 7200,
+            "token_type": "Bearer",
+        }
+        json.dump(token_data, f)
+        temp_path = f.name
+
+    yield temp_path
+
+    # Cleanup
+    try:
+        os.unlink(temp_path)
+    except Exception:
+        pass
 
 
 @pytest.fixture
@@ -20,6 +46,12 @@ def mock_workouts_response():
                 "starts": "2024-01-15T07:00:00.000Z",
                 "minutes": 45,
                 "workout_type_id": 1,
+                "workout_token": "token_1",
+                "plan_id": None,
+                "route_id": None,
+                "workout_summary": None,
+                "created_at": "2024-01-15T08:00:00.000Z",
+                "updated_at": "2024-01-15T08:00:00.000Z",
             },
             {
                 "id": 2,
@@ -27,6 +59,12 @@ def mock_workouts_response():
                 "starts": "2024-01-15T18:00:00.000Z",
                 "minutes": 60,
                 "workout_type_id": 2,
+                "workout_token": "token_2",
+                "plan_id": 123,
+                "route_id": 456,
+                "workout_summary": None,
+                "created_at": "2024-01-15T19:00:00.000Z",
+                "updated_at": "2024-01-15T19:00:00.000Z",
             },
         ]
     }
@@ -40,6 +78,10 @@ def mock_workout_detail():
         "starts": "2024-01-15T07:00:00.000Z",
         "minutes": 45,
         "workout_type_id": 1,
+        "workout_token": "token_1",
+        "plan_id": None,
+        "route_id": None,
+        "workout_summary": None,
         "created_at": "2024-01-15T08:00:00.000Z",
         "updated_at": "2024-01-15T08:00:00.000Z",
     }
@@ -47,7 +89,10 @@ def mock_workout_detail():
 
 class TestWahooAPIClient:
     @pytest.mark.asyncio
-    async def test_list_workouts(self, wahoo_config, mock_workouts_response):
+    async def test_list_workouts(
+        self, wahoo_config, mock_workouts_response, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
         async with WahooAPIClient(wahoo_config) as client:
             with patch.object(client.client, "get") as mock_get:
                 mock_response = MagicMock()
@@ -59,15 +104,20 @@ class TestWahooAPIClient:
                 workouts = await client.list_workouts()
 
                 assert len(workouts) == 2
-                assert workouts[0]["name"] == "Morning Run"
+                assert workouts[0].name == "Morning Run"
+                assert workouts[0].id == 1
+                assert workouts[0].workout_token == "token_1"
+                assert workouts[1].name == "Evening Ride"
+                assert workouts[1].plan_id == 123
                 mock_get.assert_called_once_with(
                     "/v1/workouts", params={"page": 1, "per_page": 30}
                 )
 
     @pytest.mark.asyncio
     async def test_list_workouts_with_filters(
-        self, wahoo_config, mock_workouts_response
+        self, wahoo_config, mock_workouts_response, temp_token_file, monkeypatch
     ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
         async with WahooAPIClient(wahoo_config) as client:
             with patch.object(client.client, "get") as mock_get:
                 mock_response = MagicMock()
@@ -91,7 +141,10 @@ class TestWahooAPIClient:
                 )
 
     @pytest.mark.asyncio
-    async def test_get_workout(self, wahoo_config, mock_workout_detail):
+    async def test_get_workout(
+        self, wahoo_config, mock_workout_detail, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
         async with WahooAPIClient(wahoo_config) as client:
             with patch.object(client.client, "get") as mock_get:
                 mock_response = MagicMock()
@@ -102,8 +155,10 @@ class TestWahooAPIClient:
 
                 workout = await client.get_workout(1)
 
-                assert workout["id"] == 1
-                assert workout["name"] == "Morning Run"
+                assert workout.id == 1
+                assert workout.name == "Morning Run"
+                assert workout.workout_token == "token_1"
+                assert workout.minutes == 45
                 mock_get.assert_called_once_with("/v1/workouts/1")
 
 
@@ -119,12 +174,20 @@ class TestMCPTools:
         assert tools[1].name == "get_workout"
 
     @pytest.mark.asyncio
-    async def test_call_tool_list_workouts(self, mock_workouts_response):
-        with patch.dict("os.environ", {"WAHOO_ACCESS_TOKEN": "test_token"}):
+    async def test_call_tool_list_workouts(
+        self, mock_workouts_response, temp_token_file
+    ):
+        with patch.dict("os.environ", {"WAHOO_TOKEN_FILE": temp_token_file}):
             with patch(
                 "src.server.WahooAPIClient.list_workouts", new_callable=AsyncMock
             ) as mock_list:
-                mock_list.return_value = mock_workouts_response["workouts"]
+                # Convert mock data to Workout objects
+                from src.server import Workout
+
+                workout_objects = [
+                    Workout(**w) for w in mock_workouts_response["workouts"]
+                ]
+                mock_list.return_value = workout_objects
 
                 from src.server import call_tool
 
@@ -136,12 +199,16 @@ class TestMCPTools:
                 assert "Evening Ride" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_call_tool_get_workout(self, mock_workout_detail):
-        with patch.dict("os.environ", {"WAHOO_ACCESS_TOKEN": "test_token"}):
+    async def test_call_tool_get_workout(self, mock_workout_detail, temp_token_file):
+        with patch.dict("os.environ", {"WAHOO_TOKEN_FILE": temp_token_file}):
             with patch(
                 "src.server.WahooAPIClient.get_workout", new_callable=AsyncMock
             ) as mock_get:
-                mock_get.return_value = mock_workout_detail
+                # Convert mock data to Workout object
+                from src.server import Workout
+
+                workout_object = Workout(**mock_workout_detail)
+                mock_get.return_value = workout_object
 
                 from src.server import call_tool
 
@@ -160,11 +227,11 @@ class TestMCPTools:
             result = await call_tool("list_workouts", {})
 
             assert len(result) == 1
-            assert "No authentication tokens found" in result[0].text
+            assert "WAHOO_TOKEN_FILE environment variable is required" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_call_tool_unknown_tool(self):
-        with patch.dict("os.environ", {"WAHOO_ACCESS_TOKEN": "test_token"}):
+    async def test_call_tool_unknown_tool(self, temp_token_file):
+        with patch.dict("os.environ", {"WAHOO_TOKEN_FILE": temp_token_file}):
             from src.server import call_tool
 
             result = await call_tool("unknown_tool", {})
@@ -186,11 +253,19 @@ class TestRefreshToken:
         return store
 
     @pytest.mark.asyncio
-    async def test_refresh_token_on_expired(self, wahoo_config, mock_token_store):
-        # Set token as expired
-        mock_token_store.get_current.return_value.expires_at = time.time() - 100
+    async def test_refresh_token_on_expired(
+        self, wahoo_config, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
 
-        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+        # Modify the token file to have an expired token
+        with open(temp_token_file, "r") as f:
+            token_data = json.load(f)
+        token_data["expires_at"] = time.time() - 100
+        with open(temp_token_file, "w") as f:
+            json.dump(token_data, f)
+
+        async with WahooAPIClient(wahoo_config) as client:
             with patch.object(
                 client, "_refresh_access_token", new_callable=AsyncMock
             ) as mock_refresh:
@@ -202,8 +277,11 @@ class TestRefreshToken:
                 mock_refresh.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_refresh_token_on_401_response(self, wahoo_config, mock_token_store):
-        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+    async def test_refresh_token_on_401_response(
+        self, wahoo_config, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
             with patch.object(client.client, "get") as mock_get:
                 # First call returns 401, second call succeeds
                 mock_response_401 = MagicMock()
@@ -229,9 +307,10 @@ class TestRefreshToken:
 
     @pytest.mark.asyncio
     async def test_refresh_token_failure_raises_error(
-        self, wahoo_config, mock_token_store
+        self, wahoo_config, temp_token_file, monkeypatch
     ):
-        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
             with patch.object(client.client, "get") as mock_get:
                 mock_response_401 = MagicMock()
                 mock_response_401.status_code = 401
@@ -249,9 +328,15 @@ class TestRefreshToken:
                     assert "Authentication failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_success(self, wahoo_config, mock_token_store):
-        with patch.dict("os.environ", {"WAHOO_CLIENT_ID": "test_client_id"}):
-            async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+    async def test_refresh_access_token_success(
+        self, wahoo_config, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        with patch.dict(
+            "os.environ",
+            {"WAHOO_CLIENT_ID": "test_client_id", "WAHOO_TOKEN_FILE": temp_token_file},
+        ):
+            async with WahooAPIClient(wahoo_config) as client:
                 with patch("httpx.AsyncClient") as mock_client_class:
                     mock_response = MagicMock()
                     mock_response.status_code = 200
@@ -269,18 +354,33 @@ class TestRefreshToken:
                     result = await client._refresh_access_token()
 
                     assert result is True
-                    mock_token_store.update_from_response.assert_called_once()
+                    # Check that token was updated in the store
+                    assert (
+                        client.token_store.get_current().access_token
+                        == "new_access_token"
+                    )
 
     @pytest.mark.asyncio
-    async def test_refresh_access_token_no_refresh_token(self, wahoo_config):
-        store = MagicMock(spec=TokenStore)
-        store.get_current.return_value = TokenData(
-            access_token="test"
-        )  # No refresh token
+    async def test_refresh_access_token_no_refresh_token(
+        self, wahoo_config, monkeypatch
+    ):
+        # Create a token file without refresh token
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            token_data = {
+                "access_token": "test_token",
+                "expires_at": time.time() + 7200,
+                "token_type": "Bearer",
+            }
+            json.dump(token_data, f)
+            temp_path = f.name
 
-        async with WahooAPIClient(wahoo_config, store) as client:
-            result = await client._refresh_access_token()
-            assert result is False
+        try:
+            monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_path)
+            async with WahooAPIClient(wahoo_config) as client:
+                result = await client._refresh_access_token()
+                assert result is False
+        finally:
+            os.unlink(temp_path)
 
     @pytest.mark.asyncio
     async def test_call_tool_with_token_store(self, mock_workouts_response):
@@ -299,7 +399,13 @@ class TestRefreshToken:
                 with patch(
                     "src.server.WahooAPIClient.list_workouts", new_callable=AsyncMock
                 ) as mock_list:
-                    mock_list.return_value = mock_workouts_response["workouts"]
+                    # Convert mock data to Workout objects
+                    from src.server import Workout
+
+                    workout_objects = [
+                        Workout(**w) for w in mock_workouts_response["workouts"]
+                    ]
+                    mock_list.return_value = workout_objects
 
                     from src.server import call_tool
 

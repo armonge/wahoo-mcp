@@ -19,29 +19,67 @@ logger = logging.getLogger(__name__)
 
 
 class WahooConfig(BaseModel):
-    access_token: Optional[str] = Field(
-        default=None, description="Wahoo API access token"
-    )
     base_url: str = Field(
         default="https://api.wahooligan.com", description="Base URL for Wahoo API"
     )
 
 
+class WorkoutSummary(BaseModel):
+    """Workout summary/results data"""
+
+    # This can be extended based on actual API response structure
+    # For now, accepting any structure since it can be null
+    pass
+
+
 class Workout(BaseModel):
-    id: int
-    starts: str
-    minutes: int
-    name: str
-    workout_type_id: int
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    """Wahoo workout model matching the Cloud API schema"""
+
+    id: int = Field(description="Unique workout identifier")
+    starts: str = Field(description="Workout start time in ISO 8601 format")
+    minutes: int = Field(description="Workout duration in minutes")
+    name: str = Field(description="Workout name")
+    plan_id: Optional[int] = Field(None, description="Associated plan ID")
+    route_id: Optional[int] = Field(None, description="Associated route ID")
+    workout_token: str = Field(description="Application-specific identifier")
+    workout_type_id: int = Field(description="Type of workout")
+    workout_summary: Optional[WorkoutSummary] = Field(
+        None, description="Workout results"
+    )
+    created_at: str = Field(description="Creation timestamp in ISO 8601 format")
+    updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
+
+    def duration_str(self) -> str:
+        """Format duration as a readable string"""
+        if self.minutes < 60:
+            return f"{self.minutes} minutes"
+        hours = self.minutes // 60
+        remaining_minutes = self.minutes % 60
+        if remaining_minutes == 0:
+            return f"{hours} hour{'s' if hours != 1 else ''}"
+        return f"{hours}h {remaining_minutes}m"
+
+    def formatted_start_time(self) -> str:
+        """Format start time for display"""
+        from datetime import datetime
+
+        try:
+            dt = datetime.fromisoformat(self.starts.replace("Z", "+00:00"))
+            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        except Exception:
+            return self.starts
 
 
 class WahooAPIClient:
-    def __init__(self, config: WahooConfig, token_store: Optional[TokenStore] = None):
+    def __init__(self, config: WahooConfig):
         self.config = config
-        self.token_store = token_store or TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
+        token_file = os.getenv("WAHOO_TOKEN_FILE")
+        if not token_file:
+            raise ValueError("WAHOO_TOKEN_FILE environment variable is required")
+        self.token_store = TokenStore(token_file)
         self.token_data = self.token_store.get_current()
+        if not self.token_data:
+            raise ValueError(f"No valid tokens found in {token_file}")
         self.client = httpx.AsyncClient(
             base_url=config.base_url,
             headers=self._get_headers(),
@@ -49,17 +87,10 @@ class WahooAPIClient:
 
     def _get_headers(self) -> Dict[str, str]:
         """Get current headers with valid access token"""
-        if self.token_data and self.token_data.access_token:
-            return {
-                "Authorization": f"Bearer {self.token_data.access_token}",
-                "Content-Type": "application/json",
-            }
-        elif self.config.access_token:
-            return {
-                "Authorization": f"Bearer {self.config.access_token}",
-                "Content-Type": "application/json",
-            }
-        return {"Content-Type": "application/json"}
+        return {
+            "Authorization": f"Bearer {self.token_data.access_token}",
+            "Content-Type": "application/json",
+        }
 
     async def _refresh_access_token(self) -> bool:
         """Refresh the access token using refresh token"""
@@ -147,7 +178,7 @@ class WahooAPIClient:
         per_page: int = 30,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> List[Workout]:
         await self._ensure_valid_token()
 
         params = {"page": page, "per_page": per_page}
@@ -172,9 +203,24 @@ class WahooAPIClient:
 
         response.raise_for_status()
         data = response.json()
-        return data.get("workouts", [])
+        workouts_data = data.get("workouts", [])
 
-    async def get_workout(self, workout_id: int) -> Dict[str, Any]:
+        # Convert each workout dict to Workout object
+        workouts = []
+        for workout_dict in workouts_data:
+            try:
+                workout = Workout(**workout_dict)
+                workouts.append(workout)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to parse workout {workout_dict.get('id', 'unknown')}: {e}"
+                )
+                # Continue with other workouts instead of failing completely
+                continue
+
+        return workouts
+
+    async def get_workout(self, workout_id: int) -> Workout:
         await self._ensure_valid_token()
 
         response = await self.client.get(f"/v1/workouts/{workout_id}")
@@ -192,7 +238,13 @@ class WahooAPIClient:
                 )
 
         response.raise_for_status()
-        return response.json()
+        workout_dict = response.json()
+
+        try:
+            return Workout(**workout_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse workout {workout_id}: {e}")
+            raise ValueError(f"Invalid workout data received from API: {e}")
 
 
 app = Server("wahoo-mcp")
@@ -247,26 +299,10 @@ async def list_tools() -> List[Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
-    # Try to load tokens from store first
-    token_store = TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
-    token_data = token_store.load()
-
-    if not token_data:
-        # Fall back to environment variable
-        access_token = os.getenv("WAHOO_ACCESS_TOKEN")
-        if not access_token:
-            return [
-                TextContent(
-                    type="text",
-                    text="Error: No authentication tokens found. Please set WAHOO_ACCESS_TOKEN environment variable or run the auth.py script to obtain tokens.",
-                )
-            ]
-        config = WahooConfig(access_token=access_token)
-    else:
-        config = WahooConfig(access_token=token_data.access_token)
+    config = WahooConfig()
 
     try:
-        async with WahooAPIClient(config, token_store) as client:
+        async with WahooAPIClient(config) as client:
             if name == "list_workouts":
                 workouts = await client.list_workouts(
                     page=arguments.get("page", 1),
@@ -280,11 +316,16 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 
                 result = f"Found {len(workouts)} workouts:\n\n"
                 for workout in workouts:
-                    result += f"- ID: {workout['id']}\n"
-                    result += f"  Name: {workout['name']}\n"
-                    result += f"  Date: {workout['starts']}\n"
-                    result += f"  Duration: {workout['minutes']} minutes\n"
-                    result += f"  Type ID: {workout['workout_type_id']}\n\n"
+                    result += f"- ID: {workout.id}\n"
+                    result += f"  Name: {workout.name}\n"
+                    result += f"  Date: {workout.formatted_start_time()}\n"
+                    result += f"  Duration: {workout.duration_str()}\n"
+                    result += f"  Type ID: {workout.workout_type_id}\n"
+                    if workout.plan_id:
+                        result += f"  Plan ID: {workout.plan_id}\n"
+                    if workout.route_id:
+                        result += f"  Route ID: {workout.route_id}\n"
+                    result += "\n"
 
                 return [TextContent(type="text", text=result)]
 
@@ -292,18 +333,27 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 workout_id = arguments["workout_id"]
                 workout = await client.get_workout(workout_id)
 
-                result = f"Workout Details (ID: {workout['id']}):\n"
-                result += f"- Name: {workout['name']}\n"
-                result += f"- Start Time: {workout['starts']}\n"
-                result += f"- Duration: {workout['minutes']} minutes\n"
-                result += f"- Workout Type ID: {workout['workout_type_id']}\n"
+                result = f"Workout Details (ID: {workout.id}):\n"
+                result += f"- Name: {workout.name}\n"
+                result += f"- Start Time: {workout.formatted_start_time()}\n"
+                result += f"- Duration: {workout.duration_str()}\n"
+                result += f"- Workout Type ID: {workout.workout_type_id}\n"
+                result += f"- Workout Token: {workout.workout_token}\n"
 
-                if "created_at" in workout:
-                    result += f"- Created: {workout['created_at']}\n"
-                if "updated_at" in workout:
-                    result += f"- Updated: {workout['updated_at']}\n"
+                if workout.plan_id:
+                    result += f"- Plan ID: {workout.plan_id}\n"
+                if workout.route_id:
+                    result += f"- Route ID: {workout.route_id}\n"
 
-                result += f"\nFull JSON:\n{json.dumps(workout, indent=2)}"
+                result += f"- Created: {workout.created_at}\n"
+                result += f"- Updated: {workout.updated_at}\n"
+
+                if workout.workout_summary:
+                    result += "- Has Summary: Yes\n"
+                else:
+                    result += "- Has Summary: No\n"
+
+                result += f"\nFull JSON:\n{json.dumps(workout.model_dump(), indent=2)}"
 
                 return [TextContent(type="text", text=result)]
 
