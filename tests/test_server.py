@@ -87,6 +87,130 @@ def mock_workout_detail():
     }
 
 
+@pytest.fixture
+def mock_routes_response():
+    return {
+        "routes": [
+            {
+                "id": 1,
+                "user_id": 123,
+                "name": "Mountain Loop",
+                "description": "A challenging mountain route",
+                "file": {"url": "https://example.com/route1.fit"},
+                "workout_type_family_id": 0,
+                "external_id": "route_001",
+                "start_lat": 37.7749,
+                "start_lng": -122.4194,
+                "distance": 25.5,
+                "ascent": 500.0,
+                "descent": 450.0,
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_route_detail():
+    return {
+        "id": 1,
+        "user_id": 123,
+        "name": "Mountain Loop",
+        "description": "A challenging mountain route",
+        "file": {"url": "https://example.com/route1.fit"},
+        "workout_type_family_id": 0,
+        "external_id": "route_001",
+        "start_lat": 37.7749,
+        "start_lng": -122.4194,
+        "distance": 25.5,
+        "ascent": 500.0,
+        "descent": 450.0,
+    }
+
+
+@pytest.fixture
+def mock_plans_response():
+    return {
+        "plans": [
+            {
+                "id": 1,
+                "user_id": 123,
+                "name": "Training Plan A",
+                "description": "Basic training plan",
+                "file": {"url": "https://example.com/plan1.json"},
+                "workout_type_family_id": 0,
+                "external_id": "plan_001",
+                "provider_updated_at": "2024-01-15T10:00:00.000Z",
+                "deleted": False,
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_plan_detail():
+    return {
+        "id": 1,
+        "user_id": 123,
+        "name": "Training Plan A",
+        "description": "Basic training plan",
+        "file": {"url": "https://example.com/plan1.json"},
+        "workout_type_family_id": 0,
+        "external_id": "plan_001",
+        "provider_updated_at": "2024-01-15T10:00:00.000Z",
+        "deleted": False,
+    }
+
+
+@pytest.fixture
+def mock_power_zones_response():
+    return {
+        "power_zones": [
+            {
+                "id": 1,
+                "user_id": 123,
+                "zone_1": 100,
+                "zone_2": 150,
+                "zone_3": 200,
+                "zone_4": 250,
+                "zone_5": 300,
+                "zone_6": 350,
+                "zone_7": 400,
+                "ftp": 250,
+                "zone_count": 7,
+                "workout_type_id": 0,
+                "workout_type_family_id": 0,
+                "workout_type_location_id": 0,
+                "critical_power": 275,
+                "created_at": "2024-01-15T12:00:00.000Z",
+                "updated_at": "2024-01-15T12:00:00.000Z",
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_power_zone_detail():
+    return {
+        "id": 1,
+        "user_id": 123,
+        "zone_1": 100,
+        "zone_2": 150,
+        "zone_3": 200,
+        "zone_4": 250,
+        "zone_5": 300,
+        "zone_6": 350,
+        "zone_7": 400,
+        "ftp": 250,
+        "zone_count": 7,
+        "workout_type_id": 0,
+        "workout_type_family_id": 0,
+        "workout_type_location_id": 0,
+        "critical_power": 275,
+        "created_at": "2024-01-15T12:00:00.000Z",
+        "updated_at": "2024-01-15T12:00:00.000Z",
+    }
+
+
 class TestWahooAPIClient:
     @pytest.mark.asyncio
     async def test_list_workouts(
@@ -161,6 +285,129 @@ class TestWahooAPIClient:
                 assert workout.minutes == 45
                 mock_get.assert_called_once_with("/v1/workouts/1")
 
+    @pytest.mark.asyncio
+    async def test_list_routes(
+        self, wahoo_config, mock_routes_response, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_routes_response
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                routes = await client.list_routes()
+
+                assert len(routes) == 1
+                assert routes[0].name == "Mountain Loop"
+                assert routes[0].id == 1
+                assert routes[0].distance == 25.5
+                mock_get.assert_called_once_with("/v1/routes", params={})
+
+    @pytest.mark.asyncio
+    async def test_get_route(
+        self, wahoo_config, mock_route_detail, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_route_detail
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                route = await client.get_route(1)
+
+                assert route.id == 1
+                assert route.name == "Mountain Loop"
+                assert route.file.url == "https://example.com/route1.fit"
+                mock_get.assert_called_once_with("/v1/routes/1")
+
+    @pytest.mark.asyncio
+    async def test_list_plans(
+        self, wahoo_config, mock_plans_response, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_plans_response
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                plans = await client.list_plans()
+
+                assert len(plans) == 1
+                assert plans[0].name == "Training Plan A"
+                assert plans[0].id == 1
+                assert not plans[0].deleted
+                mock_get.assert_called_once_with("/v1/plans", params={})
+
+    @pytest.mark.asyncio
+    async def test_get_plan(
+        self, wahoo_config, mock_plan_detail, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_plan_detail
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                plan = await client.get_plan(1)
+
+                assert plan.id == 1
+                assert plan.name == "Training Plan A"
+                assert plan.file.url == "https://example.com/plan1.json"
+                mock_get.assert_called_once_with("/v1/plans/1")
+
+    @pytest.mark.asyncio
+    async def test_list_power_zones(
+        self, wahoo_config, mock_power_zones_response, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_power_zones_response
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                power_zones = await client.list_power_zones()
+
+                assert len(power_zones) == 1
+                assert power_zones[0].ftp == 250
+                assert power_zones[0].id == 1
+                assert power_zones[0].zone_7 == 400
+                mock_get.assert_called_once_with("/v1/power_zones")
+
+    @pytest.mark.asyncio
+    async def test_get_power_zone(
+        self, wahoo_config, mock_power_zone_detail, temp_token_file, monkeypatch
+    ):
+        monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
+        async with WahooAPIClient(wahoo_config) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.json.return_value = mock_power_zone_detail
+                mock_response.raise_for_status.return_value = None
+                mock_get.return_value = mock_response
+
+                power_zone = await client.get_power_zone(1)
+
+                assert power_zone.id == 1
+                assert power_zone.ftp == 250
+                assert power_zone.critical_power == 275
+                mock_get.assert_called_once_with("/v1/power_zones/1")
+
 
 class TestMCPTools:
     @pytest.mark.asyncio
@@ -169,9 +416,22 @@ class TestMCPTools:
         from src.server import list_tools
 
         tools = await list_tools()
-        assert len(tools) == 2
-        assert tools[0].name == "list_workouts"
-        assert tools[1].name == "get_workout"
+        assert len(tools) == 8
+
+        tool_names = [tool.name for tool in tools]
+        expected_tools = [
+            "list_workouts",
+            "get_workout",
+            "list_routes",
+            "get_route",
+            "list_plans",
+            "get_plan",
+            "list_power_zones",
+            "get_power_zone",
+        ]
+
+        for expected_tool in expected_tools:
+            assert expected_tool in tool_names
 
     @pytest.mark.asyncio
     async def test_call_tool_list_workouts(

@@ -361,6 +361,77 @@ class WahooConfig(BaseModel):
     )
 
 
+class RouteFile(BaseModel):
+    """Route file information"""
+
+    url: str = Field(description="URL to the route file")
+
+
+class Route(BaseModel):
+    """Wahoo route model matching the Cloud API schema"""
+
+    id: int = Field(description="Unique route identifier")
+    user_id: int = Field(description="User ID who owns the route")
+    name: str = Field(description="Route name")
+    description: Optional[str] = Field(None, description="Route description")
+    file: RouteFile = Field(description="Route file information")
+    workout_type_family_id: int = Field(description="Workout type family ID")
+    external_id: Optional[str] = Field(None, description="External route ID")
+    start_lat: Optional[float] = Field(None, description="Starting latitude")
+    start_lng: Optional[float] = Field(None, description="Starting longitude")
+    distance: Optional[float] = Field(None, description="Route distance")
+    ascent: Optional[float] = Field(None, description="Route ascent")
+    descent: Optional[float] = Field(None, description="Route descent")
+
+
+class PlanFile(BaseModel):
+    """Plan file information"""
+
+    url: str = Field(description="URL to the plan file")
+
+
+class Plan(BaseModel):
+    """Wahoo plan model matching the Cloud API schema"""
+
+    id: int = Field(description="Unique plan identifier")
+    user_id: int = Field(description="User ID who owns the plan")
+    name: str = Field(description="Plan name")
+    description: Optional[str] = Field(None, description="Plan description")
+    file: PlanFile = Field(description="Plan file information")
+    workout_type_family_id: int = Field(description="Workout type family ID")
+    external_id: Optional[str] = Field(None, description="External plan ID")
+    provider_updated_at: Optional[str] = Field(
+        None, description="Provider update timestamp"
+    )
+    deleted: bool = Field(default=False, description="Whether the plan is deleted")
+
+
+class PowerZone(BaseModel):
+    """Wahoo power zone model matching the Cloud API schema"""
+
+    id: int = Field(description="Unique power zone identifier")
+    user_id: int = Field(description="User ID who owns the power zones")
+    zone_1: int = Field(description="Zone 1 power value")
+    zone_2: int = Field(description="Zone 2 power value")
+    zone_3: int = Field(description="Zone 3 power value")
+    zone_4: int = Field(description="Zone 4 power value")
+    zone_5: int = Field(description="Zone 5 power value")
+    zone_6: int = Field(description="Zone 6 power value")
+    zone_7: int = Field(description="Zone 7 power value")
+    ftp: int = Field(description="Functional Threshold Power")
+    zone_count: int = Field(description="Number of zones")
+    workout_type_id: int = Field(description="Workout type ID")
+    workout_type_family_id: int = Field(description="Workout type family ID")
+    workout_type_location_id: int = Field(description="Workout type location ID")
+    critical_power: Optional[int] = Field(None, description="Critical power")
+    created_at: str = Field(description="Creation timestamp in ISO 8601 format")
+    updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
+
+    def get_workout_type(self) -> WorkoutType:
+        """Get the WorkoutType enum for this power zone"""
+        return WorkoutType.from_id(self.workout_type_id)
+
+
 class Workout(BaseModel):
     """Wahoo workout model matching the Cloud API schema"""
 
@@ -583,6 +654,200 @@ class WahooAPIClient:
             logger.error(f"Failed to parse workout {workout_id}: {e}")
             raise ValueError(f"Invalid workout data received from API: {e}")
 
+    async def list_routes(self, external_id: Optional[str] = None) -> List[Route]:
+        await self._ensure_valid_token()
+
+        params = {}
+        if external_id:
+            params["external_id"] = external_id
+
+        response = await self.client.get("/v1/routes", params=params)
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get("/v1/routes", params=params)
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        data = response.json()
+        routes_data = data.get("routes", [])
+
+        # Convert each route dict to Route object
+        routes = []
+        for route_dict in routes_data:
+            try:
+                route = Route(**route_dict)
+                routes.append(route)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to parse route {route_dict.get('id', 'unknown')}: {e}"
+                )
+                # Continue with other routes instead of failing completely
+                continue
+
+        return routes
+
+    async def get_route(self, route_id: int) -> Route:
+        await self._ensure_valid_token()
+
+        response = await self.client.get(f"/v1/routes/{route_id}")
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get(f"/v1/routes/{route_id}")
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        route_dict = response.json()
+
+        try:
+            return Route(**route_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse route {route_id}: {e}")
+            raise ValueError(f"Invalid route data received from API: {e}")
+
+    async def list_plans(self, external_id: Optional[str] = None) -> List[Plan]:
+        await self._ensure_valid_token()
+
+        params = {}
+        if external_id:
+            params["external_id"] = external_id
+
+        response = await self.client.get("/v1/plans", params=params)
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get("/v1/plans", params=params)
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        data = response.json()
+        plans_data = data.get("plans", [])
+
+        # Convert each plan dict to Plan object
+        plans = []
+        for plan_dict in plans_data:
+            try:
+                plan = Plan(**plan_dict)
+                plans.append(plan)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to parse plan {plan_dict.get('id', 'unknown')}: {e}"
+                )
+                # Continue with other plans instead of failing completely
+                continue
+
+        return plans
+
+    async def get_plan(self, plan_id: int) -> Plan:
+        await self._ensure_valid_token()
+
+        response = await self.client.get(f"/v1/plans/{plan_id}")
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get(f"/v1/plans/{plan_id}")
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        plan_dict = response.json()
+
+        try:
+            return Plan(**plan_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse plan {plan_id}: {e}")
+            raise ValueError(f"Invalid plan data received from API: {e}")
+
+    async def list_power_zones(self) -> List[PowerZone]:
+        await self._ensure_valid_token()
+
+        response = await self.client.get("/v1/power_zones")
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get("/v1/power_zones")
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        data = response.json()
+        power_zones_data = data.get("power_zones", [])
+
+        # Convert each power zone dict to PowerZone object
+        power_zones = []
+        for power_zone_dict in power_zones_data:
+            try:
+                power_zone = PowerZone(**power_zone_dict)
+                power_zones.append(power_zone)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to parse power zone {power_zone_dict.get('id', 'unknown')}: {e}"
+                )
+                # Continue with other power zones instead of failing completely
+                continue
+
+        return power_zones
+
+    async def get_power_zone(self, power_zone_id: int) -> PowerZone:
+        await self._ensure_valid_token()
+
+        response = await self.client.get(f"/v1/power_zones/{power_zone_id}")
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get(f"/v1/power_zones/{power_zone_id}")
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        power_zone_dict = response.json()
+
+        try:
+            return PowerZone(**power_zone_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse power zone {power_zone_id}: {e}")
+            raise ValueError(f"Invalid power zone data received from API: {e}")
+
 
 app = Server("wahoo-mcp")
 
@@ -629,6 +894,82 @@ async def list_tools() -> List[Tool]:
                     }
                 },
                 "required": ["workout_id"],
+            },
+        ),
+        Tool(
+            name="list_routes",
+            description="List routes from Wahoo Cloud API",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "external_id": {
+                        "type": "string",
+                        "description": "Filter routes by external ID",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_route",
+            description="Get detailed information about a specific route",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "route_id": {
+                        "type": "integer",
+                        "description": "The ID of the route to retrieve",
+                    }
+                },
+                "required": ["route_id"],
+            },
+        ),
+        Tool(
+            name="list_plans",
+            description="List plans from Wahoo Cloud API",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "external_id": {
+                        "type": "string",
+                        "description": "Filter plans by external ID",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="get_plan",
+            description="Get detailed information about a specific plan",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "plan_id": {
+                        "type": "integer",
+                        "description": "The ID of the plan to retrieve",
+                    }
+                },
+                "required": ["plan_id"],
+            },
+        ),
+        Tool(
+            name="list_power_zones",
+            description="List power zones from Wahoo Cloud API",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="get_power_zone",
+            description="Get detailed information about a specific power zone",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "power_zone_id": {
+                        "type": "integer",
+                        "description": "The ID of the power zone to retrieve",
+                    }
+                },
+                "required": ["power_zone_id"],
             },
         ),
     ]
@@ -695,6 +1036,145 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                     result += "- Has Summary: No\n"
 
                 result += f"\nFull JSON:\n{json.dumps(workout.model_dump(), indent=2)}"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "list_routes":
+                routes = await client.list_routes(
+                    external_id=arguments.get("external_id")
+                )
+
+                if not routes:
+                    return [TextContent(type="text", text="No routes found.")]
+
+                result = f"Found {len(routes)} routes:\n\n"
+                for route in routes:
+                    result += f"- ID: {route.id}\n"
+                    result += f"  Name: {route.name}\n"
+                    if route.description:
+                        result += f"  Description: {route.description}\n"
+                    if route.distance:
+                        result += f"  Distance: {route.distance:.1f}\n"
+                    if route.start_lat and route.start_lng:
+                        result += (
+                            f"  Start: {route.start_lat:.6f}, {route.start_lng:.6f}\n"
+                        )
+                    if route.external_id:
+                        result += f"  External ID: {route.external_id}\n"
+                    result += "\n"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_route":
+                route_id = arguments["route_id"]
+                route = await client.get_route(route_id)
+
+                result = f"Route Details (ID: {route.id}):\n"
+                result += f"- Name: {route.name}\n"
+                if route.description:
+                    result += f"- Description: {route.description}\n"
+                result += f"- User ID: {route.user_id}\n"
+                result += f"- Workout Type Family ID: {route.workout_type_family_id}\n"
+                if route.external_id:
+                    result += f"- External ID: {route.external_id}\n"
+                if route.start_lat and route.start_lng:
+                    result += f"- Start Position: {route.start_lat:.6f}, {route.start_lng:.6f}\n"
+                if route.distance:
+                    result += f"- Distance: {route.distance:.1f}\n"
+                if route.ascent:
+                    result += f"- Ascent: {route.ascent:.1f}\n"
+                if route.descent:
+                    result += f"- Descent: {route.descent:.1f}\n"
+                result += f"- File URL: {route.file.url}\n"
+
+                result += f"\nFull JSON:\n{json.dumps(route.model_dump(), indent=2)}"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "list_plans":
+                plans = await client.list_plans(
+                    external_id=arguments.get("external_id")
+                )
+
+                if not plans:
+                    return [TextContent(type="text", text="No plans found.")]
+
+                result = f"Found {len(plans)} plans:\n\n"
+                for plan in plans:
+                    result += f"- ID: {plan.id}\n"
+                    result += f"  Name: {plan.name}\n"
+                    if plan.description:
+                        result += f"  Description: {plan.description}\n"
+                    if plan.external_id:
+                        result += f"  External ID: {plan.external_id}\n"
+                    result += f"  Deleted: {plan.deleted}\n"
+                    result += "\n"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_plan":
+                plan_id = arguments["plan_id"]
+                plan = await client.get_plan(plan_id)
+
+                result = f"Plan Details (ID: {plan.id}):\n"
+                result += f"- Name: {plan.name}\n"
+                if plan.description:
+                    result += f"- Description: {plan.description}\n"
+                result += f"- User ID: {plan.user_id}\n"
+                result += f"- Workout Type Family ID: {plan.workout_type_family_id}\n"
+                if plan.external_id:
+                    result += f"- External ID: {plan.external_id}\n"
+                if plan.provider_updated_at:
+                    result += f"- Provider Updated: {plan.provider_updated_at}\n"
+                result += f"- Deleted: {plan.deleted}\n"
+                result += f"- File URL: {plan.file.url}\n"
+
+                result += f"\nFull JSON:\n{json.dumps(plan.model_dump(), indent=2)}"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "list_power_zones":
+                power_zones = await client.list_power_zones()
+
+                if not power_zones:
+                    return [TextContent(type="text", text="No power zones found.")]
+
+                result = f"Found {len(power_zones)} power zones:\n\n"
+                for pz in power_zones:
+                    workout_type = pz.get_workout_type()
+                    result += f"- ID: {pz.id}\n"
+                    result += f"  FTP: {pz.ftp}W\n"
+                    result += f"  Type: {workout_type.description}\n"
+                    result += f"  Zones: {pz.zone_1}W, {pz.zone_2}W, {pz.zone_3}W, {pz.zone_4}W, {pz.zone_5}W, {pz.zone_6}W, {pz.zone_7}W\n"
+                    if pz.critical_power:
+                        result += f"  Critical Power: {pz.critical_power}W\n"
+                    result += "\n"
+
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_power_zone":
+                power_zone_id = arguments["power_zone_id"]
+                pz = await client.get_power_zone(power_zone_id)
+
+                workout_type = pz.get_workout_type()
+                result = f"Power Zone Details (ID: {pz.id}):\n"
+                result += f"- User ID: {pz.user_id}\n"
+                result += f"- FTP: {pz.ftp}W\n"
+                result += f"- Zone Count: {pz.zone_count}\n"
+                result += f"- Workout Type: {workout_type.description}\n"
+                result += f"- Zone 1: {pz.zone_1}W\n"
+                result += f"- Zone 2: {pz.zone_2}W\n"
+                result += f"- Zone 3: {pz.zone_3}W\n"
+                result += f"- Zone 4: {pz.zone_4}W\n"
+                result += f"- Zone 5: {pz.zone_5}W\n"
+                result += f"- Zone 6: {pz.zone_6}W\n"
+                result += f"- Zone 7: {pz.zone_7}W\n"
+                if pz.critical_power:
+                    result += f"- Critical Power: {pz.critical_power}W\n"
+                result += f"- Created: {pz.created_at}\n"
+                result += f"- Updated: {pz.updated_at}\n"
+
+                result += f"\nFull JSON:\n{json.dumps(pz.model_dump(), indent=2)}"
 
                 return [TextContent(type="text", text=result)]
 
