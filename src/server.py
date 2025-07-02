@@ -223,7 +223,13 @@ class WahooAPIClient:
 
         response.raise_for_status()
         data = response.json()
-        routes_data = data.get("routes", [])
+        # Handle both dict and list response formats
+        if isinstance(data, dict):
+            routes_data = data.get("routes", [])
+        elif isinstance(data, list):
+            routes_data = data
+        else:
+            routes_data = []
 
         # Convert each route dict to Route object
         routes = []
@@ -289,7 +295,13 @@ class WahooAPIClient:
 
         response.raise_for_status()
         data = response.json()
-        plans_data = data.get("plans", [])
+        # Handle both dict and list response formats
+        if isinstance(data, dict):
+            plans_data = data.get("plans", [])
+        elif isinstance(data, list):
+            plans_data = data
+        else:
+            plans_data = []
 
         # Convert each plan dict to Plan object
         plans = []
@@ -351,7 +363,13 @@ class WahooAPIClient:
 
         response.raise_for_status()
         data = response.json()
-        power_zones_data = data.get("power_zones", [])
+        # Handle both dict and list response formats
+        if isinstance(data, dict):
+            power_zones_data = data.get("power_zones", [])
+        elif isinstance(data, list):
+            power_zones_data = data
+        else:
+            power_zones_data = []
 
         # Convert each power zone dict to PowerZone object
         power_zones = []

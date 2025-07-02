@@ -8,12 +8,12 @@ import asyncio
 import time
 from dotenv import load_dotenv
 from src.token_store import TokenStore, TokenData
+from src.server import WahooAPIClient, WahooConfig
 
 # Load environment variables
 load_dotenv()
 
 CLIENT_ID = os.getenv("WAHOO_CLIENT_ID")
-TOKEN_URL = "https://api.wahooligan.com/oauth/token"
 
 
 async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> bool:
@@ -62,7 +62,11 @@ async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> 
         try:
             print("\n   Requesting new access token...")
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
-            response = await client.post(TOKEN_URL, data=refresh_data, headers=headers)
+            response = await client.post(
+                "https://api.wahooligan.com/oauth/token",
+                data=refresh_data,
+                headers=headers,
+            )
 
             if response.status_code == 200:
                 refresh_response = response.json()
@@ -130,7 +134,7 @@ async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> 
 
 
 async def test_wahoo_credentials():
-    """Test if Wahoo credentials are valid by making a simple API call"""
+    """Test if Wahoo credentials are valid using the WahooAPIClient"""
 
     # Get token file path
     token_file = os.getenv("WAHOO_TOKEN_FILE")
@@ -154,20 +158,8 @@ async def test_wahoo_credentials():
         print("Run 'make auth' to obtain an access token")
         return False
 
-    access_token = token_data.access_token
-
-    # Test API endpoint - list workouts with limit 1
-    url = "https://api.wahooligan.com/v1/workouts"
-    headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Content-Type": "application/json",
-    }
-    params = {"page": 1, "per_page": 1}
-
     print("🔍 Testing Wahoo API credentials...")
-    print(f"   Token: {access_token[:10]}...")
-
-    # Show token source
+    print(f"   Token: {token_data.access_token[:10]}...")
     print(f"   Source: Token file ({token_store.token_file})")
 
     # Check if token is expired
@@ -177,101 +169,59 @@ async def test_wahoo_credentials():
         elif token_data.is_expired():
             print("   ⚠️  Warning: Token will expire soon")
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.get(url, headers=headers, params=params)
+    # Use WahooAPIClient to test endpoints
+    try:
+        config = WahooConfig()
+        async with WahooAPIClient(config) as client:
+            # Test workouts endpoint
+            workouts = await client.list_workouts(page=1, per_page=1)
+            print("✅ Success! Credentials are valid")
+            print(f"   Found {len(workouts)} workout(s)")
 
-            if response.status_code == 200:
-                data = response.json()
-                print("✅ Success! Credentials are valid")
-                print(f"   Found {len(data.get('workouts', []))} workout(s)")
+            # Test the new endpoints
+            print("\n🔍 Testing additional API endpoints...")
 
-                # Test the new endpoints
-                print("\n🔍 Testing additional API endpoints...")
+            # Test routes endpoint
+            try:
+                routes = await client.list_routes()
+                print(f"   Routes: ✅ Found {len(routes)} route(s)")
+            except Exception as e:
+                print(f"   Routes: ❌ Failed ({str(e)})")
 
-                # Test routes endpoint
-                routes_response = await client.get(
-                    "https://api.wahooligan.com/v1/routes",
-                    headers=headers,
-                    params={"page": 1, "per_page": 1},
-                )
-                if routes_response.status_code == 200:
-                    routes_data = routes_response.json()
-                    # Handle both dict and list response formats
-                    if isinstance(routes_data, dict):
-                        routes_count = len(routes_data.get("routes", []))
-                    else:
-                        routes_count = (
-                            len(routes_data) if isinstance(routes_data, list) else 0
-                        )
-                    print(f"   Routes: ✅ Found {routes_count} route(s)")
-                else:
-                    print(f"   Routes: ❌ Failed ({routes_response.status_code})")
+            # Test plans endpoint
+            try:
+                plans = await client.list_plans()
+                print(f"   Plans: ✅ Found {len(plans)} plan(s)")
+            except Exception as e:
+                print(f"   Plans: ❌ Failed ({str(e)})")
 
-                # Test plans endpoint
-                plans_response = await client.get(
-                    "https://api.wahooligan.com/v1/plans",
-                    headers=headers,
-                    params={"page": 1, "per_page": 1},
-                )
-                if plans_response.status_code == 200:
-                    plans_data = plans_response.json()
-                    # Handle both dict and list response formats
-                    if isinstance(plans_data, dict):
-                        plans_count = len(plans_data.get("plans", []))
-                    else:
-                        plans_count = (
-                            len(plans_data) if isinstance(plans_data, list) else 0
-                        )
-                    print(f"   Plans: ✅ Found {plans_count} plan(s)")
-                else:
-                    print(f"   Plans: ❌ Failed ({plans_response.status_code})")
+            # Test power zones endpoint
+            try:
+                power_zones = await client.list_power_zones()
+                print(f"   Power Zones: ✅ Found {len(power_zones)} power zone(s)")
+            except Exception as e:
+                print(f"   Power Zones: ❌ Failed ({str(e)})")
 
-                # Test power zones endpoint
-                power_zones_response = await client.get(
-                    "https://api.wahooligan.com/v1/power_zones", headers=headers
-                )
-                if power_zones_response.status_code == 200:
-                    power_zones_data = power_zones_response.json()
-                    # Handle both dict and list response formats
-                    if isinstance(power_zones_data, dict):
-                        power_zones_count = len(power_zones_data.get("power_zones", []))
-                    else:
-                        power_zones_count = (
-                            len(power_zones_data)
-                            if isinstance(power_zones_data, list)
-                            else 0
-                        )
-                    print(f"   Power Zones: ✅ Found {power_zones_count} power zone(s)")
-                else:
-                    print(
-                        f"   Power Zones: ❌ Failed ({power_zones_response.status_code})"
-                    )
-
-                # Test refresh token if available
-                if token_data.refresh_token and token_data.code_verifier:
-                    print("\n🔄 Testing refresh token...")
-                    refresh_success = await test_refresh_token(token_data, token_store)
-                    return refresh_success
-                else:
-                    print("\n⚠️  No refresh token available to test")
-                    if not token_data.refresh_token:
-                        print("   Missing: refresh_token")
-                    if not token_data.code_verifier:
-                        print("   Missing: code_verifier")
-                return True
-            elif response.status_code == 401:
-                print("❌ Invalid credentials: Authentication failed")
-                print("   The access token may be expired or invalid")
-                return False
+            # Test refresh token if available
+            if token_data.refresh_token and token_data.code_verifier:
+                print("\n🔄 Testing refresh token...")
+                refresh_success = await test_refresh_token(token_data, token_store)
+                return refresh_success
             else:
-                print(f"❌ API request failed with status: {response.status_code}")
-                print(f"   Response: {response.text}")
-                return False
+                print("\n⚠️  No refresh token available to test")
+                if not token_data.refresh_token:
+                    print("   Missing: refresh_token")
+                if not token_data.code_verifier:
+                    print("   Missing: code_verifier")
+            return True
 
-        except Exception as e:
+    except Exception as e:
+        if "401" in str(e) or "Authentication failed" in str(e):
+            print("❌ Invalid credentials: Authentication failed")
+            print("   The access token may be expired or invalid")
+        else:
             print(f"❌ Error testing credentials: {str(e)}")
-            return False
+        return False
 
 
 if __name__ == "__main__":
