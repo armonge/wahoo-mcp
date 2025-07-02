@@ -201,10 +201,13 @@ pytest
 wahoo-mcp/
 ├── src/
 │   ├── __init__.py
-│   └── server.py       # Main MCP server implementation
+│   ├── server.py       # Main MCP server implementation
+│   ├── auth.py         # OAuth authentication helper
+│   └── token_store.py  # Token storage and refresh logic
 ├── tests/
 │   ├── __init__.py
-│   └── test_server.py  # Test suite
+│   ├── test_server.py  # Server test suite
+│   └── test_token_store.py  # Token store tests
 ├── pyproject.toml      # Project configuration
 └── README.md          # This file
 ```

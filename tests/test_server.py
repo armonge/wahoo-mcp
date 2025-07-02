@@ -1,6 +1,8 @@
 import pytest
+import time
 from unittest.mock import patch, AsyncMock, MagicMock
 from src.server import WahooAPIClient, WahooConfig
+from src.token_store import TokenStore, TokenData
 
 
 @pytest.fixture
@@ -158,7 +160,7 @@ class TestMCPTools:
             result = await call_tool("list_workouts", {})
 
             assert len(result) == 1
-            assert "WAHOO_ACCESS_TOKEN environment variable not set" in result[0].text
+            assert "No authentication tokens found" in result[0].text
 
     @pytest.mark.asyncio
     async def test_call_tool_unknown_tool(self):
@@ -169,3 +171,139 @@ class TestMCPTools:
 
             assert len(result) == 1
             assert "Unknown tool: unknown_tool" in result[0].text
+
+
+class TestRefreshToken:
+    @pytest.fixture
+    def mock_token_store(self):
+        store = MagicMock(spec=TokenStore)
+        store.get_current.return_value = TokenData(
+            access_token="test_access",
+            refresh_token="test_refresh",
+            code_verifier="test_verifier",
+            expires_at=time.time() + 3600,
+        )
+        return store
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_on_expired(self, wahoo_config, mock_token_store):
+        # Set token as expired
+        mock_token_store.get_current.return_value.expires_at = time.time() - 100
+
+        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+            with patch.object(
+                client, "_refresh_access_token", new_callable=AsyncMock
+            ) as mock_refresh:
+                mock_refresh.return_value = True
+
+                # Ensure token refresh is called
+                await client._ensure_valid_token()
+
+                mock_refresh.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_on_401_response(self, wahoo_config, mock_token_store):
+        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+            with patch.object(client.client, "get") as mock_get:
+                # First call returns 401, second call succeeds
+                mock_response_401 = MagicMock()
+                mock_response_401.status_code = 401
+
+                mock_response_200 = MagicMock()
+                mock_response_200.status_code = 200
+                mock_response_200.json.return_value = {"workouts": []}
+                mock_response_200.raise_for_status.return_value = None
+
+                mock_get.side_effect = [mock_response_401, mock_response_200]
+
+                with patch.object(
+                    client, "_refresh_access_token", new_callable=AsyncMock
+                ) as mock_refresh:
+                    mock_refresh.return_value = True
+
+                    workouts = await client.list_workouts()
+
+                    assert workouts == []
+                    mock_refresh.assert_called_once()
+                    assert mock_get.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_refresh_token_failure_raises_error(
+        self, wahoo_config, mock_token_store
+    ):
+        async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+            with patch.object(client.client, "get") as mock_get:
+                mock_response_401 = MagicMock()
+                mock_response_401.status_code = 401
+                mock_response_401.request = MagicMock()
+                mock_get.return_value = mock_response_401
+
+                with patch.object(
+                    client, "_refresh_access_token", new_callable=AsyncMock
+                ) as mock_refresh:
+                    mock_refresh.return_value = False
+
+                    with pytest.raises(Exception) as exc_info:
+                        await client.list_workouts()
+
+                    assert "Authentication failed" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_success(self, wahoo_config, mock_token_store):
+        with patch.dict("os.environ", {"WAHOO_CLIENT_ID": "test_client_id"}):
+            async with WahooAPIClient(wahoo_config, mock_token_store) as client:
+                with patch("httpx.AsyncClient") as mock_client_class:
+                    mock_response = MagicMock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {
+                        "access_token": "new_access_token",
+                        "refresh_token": "new_refresh_token",
+                        "expires_in": 7200,
+                    }
+
+                    mock_client = AsyncMock()
+                    mock_client.post.return_value = mock_response
+                    mock_client.__aenter__.return_value = mock_client
+                    mock_client_class.return_value = mock_client
+
+                    result = await client._refresh_access_token()
+
+                    assert result is True
+                    mock_token_store.update_from_response.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_refresh_access_token_no_refresh_token(self, wahoo_config):
+        store = MagicMock(spec=TokenStore)
+        store.get_current.return_value = TokenData(
+            access_token="test"
+        )  # No refresh token
+
+        async with WahooAPIClient(wahoo_config, store) as client:
+            result = await client._refresh_access_token()
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_call_tool_with_token_store(self, mock_workouts_response):
+        with patch.dict("os.environ", {"WAHOO_TOKEN_FILE": "/tmp/tokens.json"}):
+            mock_token_data = TokenData(
+                access_token="stored_token",
+                refresh_token="stored_refresh",
+                expires_at=time.time() + 3600,
+            )
+
+            with patch("src.server.TokenStore") as mock_store_class:
+                mock_store = MagicMock()
+                mock_store.load.return_value = mock_token_data
+                mock_store_class.return_value = mock_store
+
+                with patch(
+                    "src.server.WahooAPIClient.list_workouts", new_callable=AsyncMock
+                ) as mock_list:
+                    mock_list.return_value = mock_workouts_response["workouts"]
+
+                    from src.server import call_tool
+
+                    result = await call_tool("list_workouts", {})
+
+                    assert len(result) == 1
+                    assert "Found 2 workouts" in result[0].text

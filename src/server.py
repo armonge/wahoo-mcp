@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os
 import json
+import logging
 from typing import Any, Dict, List, Optional
 import httpx
 from pydantic import BaseModel, Field
@@ -8,9 +9,13 @@ from mcp.server import Server
 from mcp.types import Tool, TextContent
 from mcp.server.stdio import stdio_server
 from dotenv import load_dotenv
+from .token_store import TokenStore
 
 # Load environment variables
 load_dotenv()
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 class WahooConfig(BaseModel):
@@ -33,17 +38,91 @@ class Workout(BaseModel):
 
 
 class WahooAPIClient:
-    def __init__(self, config: WahooConfig):
+    def __init__(self, config: WahooConfig, token_store: Optional[TokenStore] = None):
         self.config = config
+        self.token_store = token_store or TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
+        self.token_data = self.token_store.get_current()
         self.client = httpx.AsyncClient(
             base_url=config.base_url,
-            headers={
-                "Authorization": f"Bearer {config.access_token}",
+            headers=self._get_headers(),
+        )
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Get current headers with valid access token"""
+        if self.token_data and self.token_data.access_token:
+            return {
+                "Authorization": f"Bearer {self.token_data.access_token}",
                 "Content-Type": "application/json",
             }
-            if config.access_token
-            else {},
-        )
+        elif self.config.access_token:
+            return {
+                "Authorization": f"Bearer {self.config.access_token}",
+                "Content-Type": "application/json",
+            }
+        return {"Content-Type": "application/json"}
+
+    async def _refresh_access_token(self) -> bool:
+        """Refresh the access token using refresh token"""
+        if not self.token_data or not self.token_data.refresh_token:
+            logger.error("No refresh token available")
+            return False
+
+        client_id = os.getenv("WAHOO_CLIENT_ID")
+        if not client_id:
+            logger.error("WAHOO_CLIENT_ID not set, cannot refresh token")
+            return False
+
+        try:
+            # Use PKCE flow if code_verifier is available
+            data = {
+                "client_id": client_id,
+                "grant_type": "refresh_token",
+                "refresh_token": self.token_data.refresh_token,
+            }
+
+            if self.token_data.code_verifier:
+                data["code_verifier"] = self.token_data.code_verifier
+            else:
+                # Fall back to standard flow if client_secret is available
+                client_secret = os.getenv("WAHOO_CLIENT_SECRET")
+                if client_secret:
+                    data["client_secret"] = client_secret
+
+            async with httpx.AsyncClient() as refresh_client:
+                response = await refresh_client.post(
+                    f"{self.config.base_url}/oauth/token",
+                    data=data,
+                )
+
+                if response.status_code == 200:
+                    token_response = response.json()
+                    self.token_data = self.token_store.update_from_response(
+                        token_response
+                    )
+                    # Update client headers with new token
+                    self.client.headers.update(self._get_headers())
+                    logger.info("Successfully refreshed access token")
+                    return True
+                else:
+                    logger.error(
+                        f"Failed to refresh token: {response.status_code} - {response.text}"
+                    )
+                    return False
+
+        except Exception as e:
+            logger.error(f"Error refreshing token: {e}")
+            return False
+
+    async def _ensure_valid_token(self) -> bool:
+        """Ensure we have a valid access token, refreshing if necessary"""
+        if not self.token_data:
+            return False
+
+        if self.token_data.is_expired():
+            logger.info("Access token expired, attempting to refresh")
+            return await self._refresh_access_token()
+
+        return True
 
     async def __aenter__(self):
         return self
@@ -58,6 +137,8 @@ class WahooAPIClient:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
+        await self._ensure_valid_token()
+
         params = {"page": page, "per_page": per_page}
         if start_date:
             params["created_after"] = start_date
@@ -65,12 +146,40 @@ class WahooAPIClient:
             params["created_before"] = end_date
 
         response = await self.client.get("/v1/workouts", params=params)
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get("/v1/workouts", params=params)
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
         response.raise_for_status()
         data = response.json()
         return data.get("workouts", [])
 
     async def get_workout(self, workout_id: int) -> Dict[str, Any]:
+        await self._ensure_valid_token()
+
         response = await self.client.get(f"/v1/workouts/{workout_id}")
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == 401:
+            logger.info("Got 401, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.get(f"/v1/workouts/{workout_id}")
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
         response.raise_for_status()
         return response.json()
 
@@ -127,19 +236,26 @@ async def list_tools() -> List[Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> List[TextContent]:
-    access_token = os.getenv("WAHOO_ACCESS_TOKEN")
-    if not access_token:
-        return [
-            TextContent(
-                type="text",
-                text="Error: WAHOO_ACCESS_TOKEN environment variable not set. Please set it with your Wahoo API access token.",
-            )
-        ]
+    # Try to load tokens from store first
+    token_store = TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
+    token_data = token_store.load()
 
-    config = WahooConfig(access_token=access_token)
+    if not token_data:
+        # Fall back to environment variable
+        access_token = os.getenv("WAHOO_ACCESS_TOKEN")
+        if not access_token:
+            return [
+                TextContent(
+                    type="text",
+                    text="Error: No authentication tokens found. Please set WAHOO_ACCESS_TOKEN environment variable or run the auth.py script to obtain tokens.",
+                )
+            ]
+        config = WahooConfig(access_token=access_token)
+    else:
+        config = WahooConfig(access_token=token_data.access_token)
 
     try:
-        async with WahooAPIClient(config) as client:
+        async with WahooAPIClient(config, token_store) as client:
             if name == "list_workouts":
                 workouts = await client.list_workouts(
                     page=arguments.get("page", 1),

@@ -14,7 +14,9 @@ import hashlib
 import logging
 import sys
 import os
+import time
 from dotenv import load_dotenv
+from token_store import TokenStore, TokenData
 
 # Load environment variables
 load_dotenv()
@@ -83,10 +85,12 @@ code_challenge = (
 logger.info("PKCE challenge generated successfully")
 
 access_token = None
+refresh_token = None
+token_store = TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
 
 
 async def callback_handler(request):
-    global access_token
+    global access_token, refresh_token
     logger.info(f"Received callback request from {request.remote}")
 
     code = request.query.get("code")
@@ -124,7 +128,18 @@ async def callback_handler(request):
             if response.status_code == 200:
                 token_data = response.json()
                 access_token = token_data["access_token"]
+                refresh_token = token_data.get("refresh_token")
                 logger.info("Successfully obtained access token")
+
+                # Store tokens
+                token_obj = TokenData(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    code_verifier=code_verifier,
+                )
+                if "expires_in" in token_data:
+                    token_obj.expires_at = time.time() + token_data["expires_in"]
+                token_store.save(token_obj)
 
                 # Log token details (without exposing the full token)
                 logger.info(f"Token type: {token_data.get('token_type', 'bearer')}")
@@ -132,17 +147,33 @@ async def callback_handler(request):
                     logger.info(f"Token expires in: {token_data['expires_in']} seconds")
                 if "scope" in token_data:
                     logger.info(f"Token scope: {token_data['scope']}")
+                if refresh_token:
+                    logger.info("Refresh token obtained")
+
+                refresh_display = ""
+                if refresh_token:
+                    refresh_display = f"""
+                    <details style="margin-top: 10px;">
+                    <summary style="cursor: pointer;">Refresh Token (click to show)</summary>
+                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{refresh_token}</pre>
+                    </details>
+                    """
 
                 return web.Response(
                     text=f"""
                     <html>
                     <body style="font-family: Arial, sans-serif; padding: 40px;">
                     <h1 style="color: #2e7d32;">✅ Authentication Successful!</h1>
-                    <p>Your access token has been obtained.</p>
+                    <p>Your tokens have been obtained.</p>
                     <p>You can close this window and return to the terminal.</p>
                     <details style="margin-top: 20px;">
                     <summary style="cursor: pointer;">Access Token (click to show)</summary>
                     <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{access_token}</pre>
+                    </details>
+                    {refresh_display}
+                    <details style="margin-top: 10px;">
+                    <summary style="cursor: pointer;">Code Verifier (click to show)</summary>
+                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{code_verifier}</pre>
                     </details>
                     </body>
                     </html>
@@ -234,10 +265,15 @@ async def start_server():
         await asyncio.sleep(1)
 
     if access_token:
-        print("\n✅ Success! Your access token has been obtained.")
-        print("\n📋 Set it as an environment variable:")
+        print("\n✅ Success! Your tokens have been obtained.")
+        print("\n📋 Set these environment variables:")
         print(f'export WAHOO_ACCESS_TOKEN="{access_token}"')
-        print("\n💡 You can also save this token securely for future use.")
+        if refresh_token:
+            print(f'export WAHOO_REFRESH_TOKEN="{refresh_token}"')
+            print(f'export WAHOO_CODE_VERIFIER="{code_verifier}"')
+        print("\n💡 You can also save these tokens securely for future use.")
+        if token_store.token_file:
+            print(f"\n💾 Tokens have been saved to: {token_store.token_file}")
 
     logger.info("Shutting down OAuth callback server...")
     await runner.cleanup()
