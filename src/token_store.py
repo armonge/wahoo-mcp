@@ -41,27 +41,17 @@ class TokenData:
 
 
 class TokenStore:
-    """Manages OAuth tokens with optional file persistence"""
+    """Manages OAuth tokens with file persistence"""
 
-    def __init__(self, token_file: Optional[str] = None):
-        self.token_file = Path(token_file) if token_file else None
+    def __init__(self, token_file: str):
+        if not token_file:
+            raise ValueError("token_file is required")
+        self.token_file = Path(token_file)
         self._token_data: Optional[TokenData] = None
 
     def load(self) -> Optional[TokenData]:
-        """Load tokens from environment or file"""
-        # First try environment variables
-        access_token = os.getenv("WAHOO_ACCESS_TOKEN")
-        if access_token:
-            self._token_data = TokenData(
-                access_token=access_token,
-                refresh_token=os.getenv("WAHOO_REFRESH_TOKEN"),
-                code_verifier=os.getenv("WAHOO_CODE_VERIFIER"),
-            )
-            logger.info("Loaded tokens from environment variables")
-            return self._token_data
-
-        # Then try file if specified
-        if self.token_file and self.token_file.exists():
+        """Load tokens from file"""
+        if self.token_file.exists():
             try:
                 with open(self.token_file, "r") as f:
                     data = json.load(f)
@@ -70,28 +60,29 @@ class TokenStore:
                     return self._token_data
             except Exception as e:
                 logger.error(f"Failed to load token file: {e}")
+        else:
+            logger.warning(f"Token file not found: {self.token_file}")
 
         return None
 
     def save(self, token_data: TokenData) -> None:
-        """Save tokens to file if configured"""
+        """Save tokens to file"""
         self._token_data = token_data
 
-        if self.token_file:
-            try:
-                # Ensure directory exists
-                self.token_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # Ensure directory exists
+            self.token_file.parent.mkdir(parents=True, exist_ok=True)
 
-                # Write tokens to file
-                with open(self.token_file, "w") as f:
-                    json.dump(token_data.to_dict(), f, indent=2)
+            # Write tokens to file
+            with open(self.token_file, "w") as f:
+                json.dump(token_data.to_dict(), f, indent=2)
 
-                # Set restrictive permissions (owner read/write only)
-                os.chmod(self.token_file, 0o600)
+            # Set restrictive permissions (owner read/write only)
+            os.chmod(self.token_file, 0o600)
 
-                logger.info(f"Saved tokens to file: {self.token_file}")
-            except Exception as e:
-                logger.error(f"Failed to save token file: {e}")
+            logger.info(f"Saved tokens to file: {self.token_file}")
+        except Exception as e:
+            logger.error(f"Failed to save token file: {e}")
 
     def update_from_response(self, response_data: Dict[str, Any]) -> TokenData:
         """Update tokens from OAuth response"""

@@ -61,7 +61,12 @@ pip install -e ".[dev]"
    WAHOO_CLIENT_SECRET=your_client_secret_here
    ```
 
-3. Use the authentication helper:
+3. Set the token file path in your `.env` file:
+   ```env
+   WAHOO_TOKEN_FILE=token.json
+   ```
+
+4. Use the authentication helper:
    ```bash
    make auth
    # or
@@ -72,12 +77,8 @@ pip install -e ".[dev]"
    - Use credentials from `.env` (or prompt if not set)
    - Open a browser for OAuth authentication
    - Start a local server to receive the callback
-   - Display your access token
-
-4. Add the access token to your `.env` file:
-   ```env
-   WAHOO_ACCESS_TOKEN=your_access_token_here
-   ```
+   - Save your tokens to the file specified by `WAHOO_TOKEN_FILE`
+   - Tokens will be automatically refreshed when needed
 
 ### Configuration Options
 
@@ -95,6 +96,7 @@ The auth server can be configured via environment variables:
 **Credentials:**
 - `WAHOO_CLIENT_ID`: Your Wahoo Client ID
 - `WAHOO_CLIENT_SECRET`: Your Wahoo Client Secret
+- `WAHOO_TOKEN_FILE`: Path to store OAuth tokens (required)
 
 **Example Configurations:**
 
@@ -148,7 +150,7 @@ Add the following to your Claude Desktop configuration file:
       "command": "python",
       "args": ["-m", "src.server"],
       "env": {
-        "WAHOO_ACCESS_TOKEN": "your_access_token_here"
+        "WAHOO_TOKEN_FILE": "/path/to/your/token.json"
       }
     }
   }

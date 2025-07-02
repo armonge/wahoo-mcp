@@ -108,31 +108,25 @@ class TestTokenStore:
         return tmp_path / "tokens.json"
 
     def test_init_without_file(self):
-        store = TokenStore()
-        assert store.token_file is None
-        assert store._token_data is None
+        with pytest.raises(TypeError):
+            TokenStore()
+
+    def test_init_with_empty_file(self):
+        with pytest.raises(ValueError) as exc_info:
+            TokenStore("")
+        assert "token_file is required" in str(exc_info.value)
 
     def test_init_with_file(self, temp_token_file):
         store = TokenStore(str(temp_token_file))
         assert store.token_file == temp_token_file
         assert store._token_data is None
 
-    @patch.dict(
-        os.environ,
-        {
-            "WAHOO_ACCESS_TOKEN": "env_access_token",
-            "WAHOO_REFRESH_TOKEN": "env_refresh_token",
-            "WAHOO_CODE_VERIFIER": "env_code_verifier",
-        },
-    )
-    def test_load_from_environment(self):
-        store = TokenStore()
+    def test_load_from_missing_file(self, temp_token_file):
+        # Use a non-existent file path
+        store = TokenStore(str(temp_token_file) + ".missing")
         token_data = store.load()
 
-        assert token_data is not None
-        assert token_data.access_token == "env_access_token"
-        assert token_data.refresh_token == "env_refresh_token"
-        assert token_data.code_verifier == "env_code_verifier"
+        assert token_data is None
 
     @patch.dict(os.environ, {}, clear=True)
     def test_load_from_file(self, temp_token_file):
@@ -153,21 +147,20 @@ class TestTokenStore:
         assert loaded_data.refresh_token == "file_refresh_token"
         assert loaded_data.expires_at == token_data["expires_at"]
 
-    @patch.dict(os.environ, {"WAHOO_ACCESS_TOKEN": "env_token"})
-    def test_load_prefers_environment_over_file(self, temp_token_file):
-        # Create a token file
+    def test_load_from_invalid_json_file(self, temp_token_file):
+        # Create an invalid JSON file
         with open(temp_token_file, "w") as f:
-            json.dump({"access_token": "file_token"}, f)
+            f.write("invalid json")
 
         store = TokenStore(str(temp_token_file))
         token_data = store.load()
 
-        # Should prefer environment variable
-        assert token_data.access_token == "env_token"
+        # Should return None on error
+        assert token_data is None
 
-    @patch.dict(os.environ, {}, clear=True)
-    def test_load_returns_none_when_no_tokens(self):
-        store = TokenStore()
+    def test_load_returns_none_when_file_missing(self, temp_token_file):
+        # Use a non-existent file path
+        store = TokenStore(str(temp_token_file) + ".notfound")
         assert store.load() is None
 
     def test_save_to_file(self, temp_token_file):
@@ -194,16 +187,19 @@ class TestTokenStore:
             stat_info = os.stat(temp_token_file)
             assert stat_info.st_mode & 0o777 == 0o600
 
-    def test_save_without_file(self):
-        store = TokenStore()
+    def test_save_creates_parent_directory(self, tmp_path):
+        # Use a path with non-existent parent directory
+        nested_path = tmp_path / "nested" / "dir" / "tokens.json"
+        store = TokenStore(str(nested_path))
         token_data = TokenData(access_token="test")
 
-        # Should not raise exception
         store.save(token_data)
+
+        assert nested_path.exists()
         assert store._token_data == token_data
 
-    def test_update_from_response(self):
-        store = TokenStore()
+    def test_update_from_response(self, temp_token_file):
+        store = TokenStore(str(temp_token_file))
         response_data = {
             "access_token": "new_access_token",
             "refresh_token": "new_refresh_token",
@@ -220,8 +216,8 @@ class TestTokenStore:
         assert token_data.token_type == "Bearer"
         assert before_time + 7200 <= token_data.expires_at <= after_time + 7200
 
-    def test_update_from_response_preserves_code_verifier(self):
-        store = TokenStore()
+    def test_update_from_response_preserves_code_verifier(self, temp_token_file):
+        store = TokenStore(str(temp_token_file))
         # Set initial token data with code_verifier
         initial_token = TokenData(
             access_token="old_access",
@@ -241,8 +237,8 @@ class TestTokenStore:
         assert token_data.refresh_token == "old_refresh"  # Preserved
         assert token_data.code_verifier == "preserved_verifier"  # Preserved
 
-    def test_get_current_loads_if_needed(self):
-        store = TokenStore()
+    def test_get_current_loads_if_needed(self, temp_token_file):
+        store = TokenStore(str(temp_token_file))
         with patch.object(store, "load") as mock_load:
             mock_load.return_value = TokenData(access_token="loaded_token")
 
@@ -251,8 +247,8 @@ class TestTokenStore:
             assert token_data.access_token == "loaded_token"
             mock_load.assert_called_once()
 
-    def test_get_current_returns_cached(self):
-        store = TokenStore()
+    def test_get_current_returns_cached(self, temp_token_file):
+        store = TokenStore(str(temp_token_file))
         cached_token = TokenData(access_token="cached_token")
         store._token_data = cached_token
 
@@ -275,10 +271,11 @@ class TestTokenStore:
         assert store._token_data is None
         assert not temp_token_file.exists()
 
-    def test_clear_without_file(self):
-        store = TokenStore()
+    def test_clear_with_missing_file(self, temp_token_file):
+        # Use a non-existent file path
+        store = TokenStore(str(temp_token_file) + ".missing")
         store._token_data = TokenData(access_token="test")
 
-        # Should not raise exception
+        # Should not raise exception even if file doesn't exist
         store.clear()
         assert store._token_data is None

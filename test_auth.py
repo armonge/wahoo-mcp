@@ -132,15 +132,26 @@ async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> 
 async def test_wahoo_credentials():
     """Test if Wahoo credentials are valid by making a simple API call"""
 
-    # Try to load token from TokenStore (supports both env vars and token file)
-    token_store = TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
-    token_data = token_store.load()
+    # Get token file path
+    token_file = os.getenv("WAHOO_TOKEN_FILE")
+    if not token_file:
+        print("❌ Error: WAHOO_TOKEN_FILE environment variable is required")
+        print(
+            "Set it to the path where tokens should be stored (e.g., export WAHOO_TOKEN_FILE=token.json)"
+        )
+        return False
+
+    # Try to load token from TokenStore
+    try:
+        token_store = TokenStore(token_file)
+        token_data = token_store.load()
+    except Exception as e:
+        print(f"❌ Error initializing token store: {e}")
+        return False
 
     if not token_data or not token_data.access_token:
-        print("❌ Error: No valid token found")
+        print(f"❌ Error: No valid token found in {token_file}")
         print("Run 'make auth' to obtain an access token")
-        if os.getenv("WAHOO_TOKEN_FILE"):
-            print(f"Token file configured: {os.getenv('WAHOO_TOKEN_FILE')}")
         return False
 
     access_token = token_data.access_token
@@ -157,10 +168,7 @@ async def test_wahoo_credentials():
     print(f"   Token: {access_token[:10]}...")
 
     # Show token source
-    if os.getenv("WAHOO_ACCESS_TOKEN"):
-        print("   Source: Environment variable")
-    elif token_store.token_file and token_store.token_file.exists():
-        print(f"   Source: Token file ({token_store.token_file})")
+    print(f"   Source: Token file ({token_store.token_file})")
 
     # Check if token is expired
     if token_data.expires_at:

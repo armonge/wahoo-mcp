@@ -86,7 +86,17 @@ logger.info("PKCE challenge generated successfully")
 
 access_token = None
 refresh_token = None
-token_store = TokenStore(os.getenv("WAHOO_TOKEN_FILE"))
+
+# Initialize token store
+token_file = os.getenv("WAHOO_TOKEN_FILE")
+if not token_file:
+    print("❌ Error: WAHOO_TOKEN_FILE environment variable is required")
+    print(
+        "Set it to the path where tokens should be stored (e.g., export WAHOO_TOKEN_FILE=token.json)"
+    )
+    sys.exit(1)
+
+token_store = TokenStore(token_file)
 
 
 async def callback_handler(request):
@@ -266,14 +276,8 @@ async def start_server():
 
     if access_token:
         print("\n✅ Success! Your tokens have been obtained.")
-        print("\n📋 Set these environment variables:")
-        print(f'export WAHOO_ACCESS_TOKEN="{access_token}"')
-        if refresh_token:
-            print(f'export WAHOO_REFRESH_TOKEN="{refresh_token}"')
-            print(f'export WAHOO_CODE_VERIFIER="{code_verifier}"')
-        print("\n💡 You can also save these tokens securely for future use.")
-        if token_store.token_file:
-            print(f"\n💾 Tokens have been saved to: {token_store.token_file}")
+        print(f"\n💾 Tokens have been saved to: {token_store.token_file}")
+        print("\n💡 Your tokens will be automatically refreshed when needed.")
 
     logger.info("Shutting down OAuth callback server...")
     await runner.cleanup()

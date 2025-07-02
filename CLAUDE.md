@@ -65,7 +65,7 @@ pre-commit install
 ### Main Components
 - **WahooAPIClient**: HTTP client for Wahoo Cloud API
 - **MCP Server**: Provides `list_workouts` and `get_workout` tools
-- **Authentication**: Uses `WAHOO_ACCESS_TOKEN` environment variable
+- **Authentication**: Uses token file specified by `WAHOO_TOKEN_FILE` environment variable
 
 ### API Endpoints
 - `GET /v1/workouts` - List workouts with pagination and date filters
@@ -103,10 +103,9 @@ pre-commit install
 4. All checks must pass before commit
 
 ## Environment Variables
-- `WAHOO_ACCESS_TOKEN`: Required for API authentication
-- `WAHOO_REFRESH_TOKEN`: Refresh token for obtaining new access tokens
-- `WAHOO_CODE_VERIFIER`: PKCE code verifier for refresh token flow
-- `WAHOO_TOKEN_FILE`: Optional file path for persistent token storage
+- `WAHOO_TOKEN_FILE`: Required - path to file for persistent token storage
+- `WAHOO_CLIENT_ID`: Required for authentication
+- `WAHOO_CLIENT_SECRET`: Required for token refresh (confidential clients)
 
 ## OAuth Token Management
 
