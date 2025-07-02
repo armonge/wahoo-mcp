@@ -197,9 +197,14 @@ async def test_wahoo_credentials():
                 )
                 if routes_response.status_code == 200:
                     routes_data = routes_response.json()
-                    print(
-                        f"   Routes: ✅ Found {len(routes_data.get('routes', []))} route(s)"
-                    )
+                    # Handle both dict and list response formats
+                    if isinstance(routes_data, dict):
+                        routes_count = len(routes_data.get("routes", []))
+                    else:
+                        routes_count = (
+                            len(routes_data) if isinstance(routes_data, list) else 0
+                        )
+                    print(f"   Routes: ✅ Found {routes_count} route(s)")
                 else:
                     print(f"   Routes: ❌ Failed ({routes_response.status_code})")
 
@@ -211,9 +216,14 @@ async def test_wahoo_credentials():
                 )
                 if plans_response.status_code == 200:
                     plans_data = plans_response.json()
-                    print(
-                        f"   Plans: ✅ Found {len(plans_data.get('plans', []))} plan(s)"
-                    )
+                    # Handle both dict and list response formats
+                    if isinstance(plans_data, dict):
+                        plans_count = len(plans_data.get("plans", []))
+                    else:
+                        plans_count = (
+                            len(plans_data) if isinstance(plans_data, list) else 0
+                        )
+                    print(f"   Plans: ✅ Found {plans_count} plan(s)")
                 else:
                     print(f"   Plans: ❌ Failed ({plans_response.status_code})")
 
@@ -223,9 +233,16 @@ async def test_wahoo_credentials():
                 )
                 if power_zones_response.status_code == 200:
                     power_zones_data = power_zones_response.json()
-                    print(
-                        f"   Power Zones: ✅ Found {len(power_zones_data.get('power_zones', []))} power zone(s)"
-                    )
+                    # Handle both dict and list response formats
+                    if isinstance(power_zones_data, dict):
+                        power_zones_count = len(power_zones_data.get("power_zones", []))
+                    else:
+                        power_zones_count = (
+                            len(power_zones_data)
+                            if isinstance(power_zones_data, list)
+                            else 0
+                        )
+                    print(f"   Power Zones: ✅ Found {power_zones_count} power zone(s)")
                 else:
                     print(
                         f"   Power Zones: ❌ Failed ({power_zones_response.status_code})"

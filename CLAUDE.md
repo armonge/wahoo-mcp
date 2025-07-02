@@ -339,3 +339,20 @@ pytest --cov=src --cov-report=html
 - **Issue**: Concurrent requests during token refresh
 - **Solution**: Token refresh is atomic per client instance
 - **TODO**: Consider implementing token refresh lock for production
+
+## Post-Refactoring Testing Requirements
+
+⚠️ **CRITICAL**: After any code refactoring, ALWAYS run these commands to ensure nothing is broken:
+
+1. **Run all tests**: `pytest -v`
+2. **Test authentication**: `make test-auth`
+3. **Check code quality**: `ruff check . && ruff format .`
+
+The `make test-auth` command tests:
+- Workouts endpoint access
+- Routes endpoint access
+- Plans endpoint access
+- Power zones endpoint access
+- Token refresh functionality
+
+This ensures that after refactoring (especially type imports/exports), all real API integrations still work correctly.
