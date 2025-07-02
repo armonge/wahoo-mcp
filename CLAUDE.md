@@ -46,6 +46,8 @@ ruff check .
 ruff format .
 ```
 
+**IMPORTANT**: Always run `ruff check .` after making any code updates to ensure code quality standards are met.
+
 ### Development Setup
 ```bash
 # Install dependencies (including dev dependencies)

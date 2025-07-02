@@ -73,20 +73,31 @@ class WahooAPIClient:
             return False
 
         try:
-            # Use PKCE flow if code_verifier is available
+            # Prepare refresh token request
             data = {
                 "client_id": client_id,
                 "grant_type": "refresh_token",
                 "refresh_token": self.token_data.refresh_token,
             }
 
-            if self.token_data.code_verifier:
+            # Check if we should use client_secret (confidential client) or code_verifier (public client)
+            client_secret = os.getenv("WAHOO_CLIENT_SECRET")
+            if client_secret:
+                # Confidential client: use client_secret
+                data["client_secret"] = client_secret
+                logger.info(
+                    "Using client_secret for token refresh (confidential client)"
+                )
+            elif self.token_data.code_verifier:
+                # Public client: use PKCE code_verifier
                 data["code_verifier"] = self.token_data.code_verifier
+                logger.info(
+                    "Using code_verifier for token refresh (public client with PKCE)"
+                )
             else:
-                # Fall back to standard flow if client_secret is available
-                client_secret = os.getenv("WAHOO_CLIENT_SECRET")
-                if client_secret:
-                    data["client_secret"] = client_secret
+                logger.warning(
+                    "No client_secret or code_verifier available for token refresh"
+                )
 
             async with httpx.AsyncClient() as refresh_client:
                 response = await refresh_client.post(
