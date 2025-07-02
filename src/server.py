@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 import os
-import json
 import logging
 from typing import Any, Dict, List, Optional
-from enum import Enum
 import httpx
 from pydantic import BaseModel, Field
 from mcp.server import Server
@@ -11,6 +9,7 @@ from mcp.types import Tool, TextContent
 from mcp.server.stdio import stdio_server
 from dotenv import load_dotenv
 from .token_store import TokenStore
+from .types import Workout, Route, Plan, PowerZone
 
 # Load environment variables
 load_dotenv()
@@ -19,463 +18,10 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-class WorkoutTypeLocation(Enum):
-    """Workout type locations"""
-
-    OUTDOOR = "Outdoor"
-    INDOOR = "Indoor"
-    UNKNOWN = "Unknown"
-
-
-class WorkoutTypeFamily(Enum):
-    """Workout type families"""
-
-    BIKING = "Biking"
-    RUNNING = "Running"
-    WALKING = "Walking"
-    TRACK = "Track"
-    TRAIL = "Trail"
-    SWIMMING = "Swimming"
-    SNOW_SPORT = "Snow Sport"
-    SKATING = "Skating"
-    WATER_SPORTS = "Water Sports"
-    GYM = "Gym"
-    OTHER = "Other"
-    NA = "N/A"
-    UNKNOWN = "Unknown"
-
-
-class WorkoutType(Enum):
-    """Wahoo workout types with their descriptions, locations, and families"""
-
-    # Format: (id, description, location, family)
-    BIKING = (0, "Biking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.BIKING)
-    RUNNING = (1, "Running", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.RUNNING)
-    FE = (2, "Fitness Equipment", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.NA)
-    RUNNING_TRACK = (
-        3,
-        "Running Track",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.TRACK,
-    )
-    RUNNING_TRAIL = (
-        4,
-        "Running Trail",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.TRAIL,
-    )
-    RUNNING_TREADMILL = (
-        5,
-        "Running Treadmill",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.RUNNING,
-    )
-    WALKING = (6, "Walking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WALKING)
-    WALKING_SPEED = (
-        7,
-        "Speed Walking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WALKING,
-    )
-    WALKING_NORDIC = (
-        8,
-        "Nordic Walking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WALKING,
-    )
-    HIKING = (9, "Hiking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WALKING)
-    MOUNTAINEERING = (
-        10,
-        "Mountaineering",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WALKING,
-    )
-    BIKING_CYCLECROSS = (
-        11,
-        "Cyclocross",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_INDOOR = (
-        12,
-        "Indoor Biking",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_MOUNTAIN = (
-        13,
-        "Mountain Biking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_RECUMBENT = (
-        14,
-        "Recumbent Biking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_ROAD = (
-        15,
-        "Road Biking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_TRACK = (
-        16,
-        "Track Biking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    BIKING_MOTOCYCLING = (
-        17,
-        "Motorcycling",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    FE_GENERAL = (
-        18,
-        "General Fitness Equipment",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.NA,
-    )
-    FE_TREADMILL = (
-        19,
-        "Fitness Equipment Treadmill",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.NA,
-    )
-    FE_ELLIPTICAL = (
-        20,
-        "Elliptical",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.GYM,
-    )
-    FE_BIKE = (
-        21,
-        "Fitness Equipment Bike",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.NA,
-    )
-    FE_ROWER = (22, "Rowing Machine", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
-    FE_CLIMBER = (
-        23,
-        "Climbing Machine",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.NA,
-    )
-    SWIMMING_LAP = (
-        25,
-        "Lap Swimming",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.SWIMMING,
-    )
-    SWIMMING_OPEN_WATER = (
-        26,
-        "Open Water Swimming",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.SWIMMING,
-    )
-    SNOWBOARDING = (
-        27,
-        "Snowboarding",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.SNOW_SPORT,
-    )
-    SKIING = (28, "Skiing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.SNOW_SPORT)
-    SKIING_DOWNHILL = (
-        29,
-        "Downhill Skiing",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.SNOW_SPORT,
-    )
-    SKIING_CROSS_COUNTRY = (
-        30,
-        "Cross Country Skiing",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.SNOW_SPORT,
-    )
-    SKATING = (31, "Skating", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.SKATING)
-    SKATING_ICE = (
-        32,
-        "Ice Skating",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.SKATING,
-    )
-    SKATING_INLINE = (
-        33,
-        "Inline Skating",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.SKATING,
-    )
-    LONG_BOARDING = (
-        34,
-        "Longboarding",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.SKATING,
-    )
-    SAILING = (
-        35,
-        "Sailing",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    WINDSURFING = (
-        36,
-        "Windsurfing",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    CANOEING = (
-        37,
-        "Canoeing",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    KAYAKING = (
-        38,
-        "Kayaking",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    ROWING = (39, "Rowing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.WATER_SPORTS)
-    KITEBOARDING = (
-        40,
-        "Kiteboarding",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    STAND_UP_PADDLE_BOARD = (
-        41,
-        "Stand Up Paddle Board",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.WATER_SPORTS,
-    )
-    WORKOUT = (42, "Workout", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
-    CARDIO_CLASS = (
-        43,
-        "Cardio Class",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.GYM,
-    )
-    STAIR_CLIMBER = (
-        44,
-        "Stair Climber",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.GYM,
-    )
-    WHEELCHAIR = (
-        45,
-        "Wheelchair",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.OTHER,
-    )
-    GOLFING = (46, "Golfing", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.OTHER)
-    OTHER = (47, "Other", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.OTHER)
-    BIKING_INDOOR_CYCLING_CLASS = (
-        49,
-        "Indoor Cycling Class",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    WALKING_TREADMILL = (
-        56,
-        "Walking Treadmill",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.WALKING,
-    )
-    BIKING_INDOOR_TRAINER = (
-        61,
-        "Indoor Trainer",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    MULTISPORT = (62, "Multisport", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.NA)
-    TRANSITION = (63, "Transition", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.NA)
-    EBIKING = (64, "E-Biking", WorkoutTypeLocation.OUTDOOR, WorkoutTypeFamily.BIKING)
-    TICKR_OFFLINE = (
-        65,
-        "TICKR Offline",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.NA,
-    )
-    YOGA = (66, "Yoga", WorkoutTypeLocation.INDOOR, WorkoutTypeFamily.GYM)
-    RUNNING_RACE = (
-        67,
-        "Running Race",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.RUNNING,
-    )
-    BIKING_INDOOR_VIRTUAL = (
-        68,
-        "Indoor Virtual Biking",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    MENTAL_STRENGTH = (
-        69,
-        "Mental Strength",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.OTHER,
-    )
-    HANDCYCLING = (
-        70,
-        "Handcycling",
-        WorkoutTypeLocation.OUTDOOR,
-        WorkoutTypeFamily.BIKING,
-    )
-    RUNNING_INDOOR_VIRTUAL = (
-        71,
-        "Indoor Virtual Running",
-        WorkoutTypeLocation.INDOOR,
-        WorkoutTypeFamily.RUNNING,
-    )
-    UNKNOWN = (255, "Unknown", WorkoutTypeLocation.UNKNOWN, WorkoutTypeFamily.UNKNOWN)
-
-    def __init__(
-        self,
-        id: int,
-        description: str,
-        location: WorkoutTypeLocation,
-        family: WorkoutTypeFamily,
-    ):
-        self.id = id
-        self.description = description
-        self.location = location
-        self.family = family
-
-    @classmethod
-    def from_id(cls, workout_type_id: int) -> "WorkoutType":
-        """Get WorkoutType from ID, returns UNKNOWN if not found"""
-        for workout_type in cls:
-            if workout_type.id == workout_type_id:
-                return workout_type
-        return cls.UNKNOWN
-
-    def __str__(self) -> str:
-        return self.description
-
-
 class WahooConfig(BaseModel):
     base_url: str = Field(
         default="https://api.wahooligan.com", description="Base URL for Wahoo API"
     )
-
-
-class RouteFile(BaseModel):
-    """Route file information"""
-
-    url: str = Field(description="URL to the route file")
-
-
-class Route(BaseModel):
-    """Wahoo route model matching the Cloud API schema"""
-
-    id: int = Field(description="Unique route identifier")
-    user_id: int = Field(description="User ID who owns the route")
-    name: str = Field(description="Route name")
-    description: Optional[str] = Field(None, description="Route description")
-    file: RouteFile = Field(description="Route file information")
-    workout_type_family_id: int = Field(description="Workout type family ID")
-    external_id: Optional[str] = Field(None, description="External route ID")
-    start_lat: Optional[float] = Field(None, description="Starting latitude")
-    start_lng: Optional[float] = Field(None, description="Starting longitude")
-    distance: Optional[float] = Field(None, description="Route distance")
-    ascent: Optional[float] = Field(None, description="Route ascent")
-    descent: Optional[float] = Field(None, description="Route descent")
-
-
-class PlanFile(BaseModel):
-    """Plan file information"""
-
-    url: str = Field(description="URL to the plan file")
-
-
-class Plan(BaseModel):
-    """Wahoo plan model matching the Cloud API schema"""
-
-    id: int = Field(description="Unique plan identifier")
-    user_id: int = Field(description="User ID who owns the plan")
-    name: str = Field(description="Plan name")
-    description: Optional[str] = Field(None, description="Plan description")
-    file: PlanFile = Field(description="Plan file information")
-    workout_type_family_id: int = Field(description="Workout type family ID")
-    external_id: Optional[str] = Field(None, description="External plan ID")
-    provider_updated_at: Optional[str] = Field(
-        None, description="Provider update timestamp"
-    )
-    deleted: bool = Field(default=False, description="Whether the plan is deleted")
-
-
-class PowerZone(BaseModel):
-    """Wahoo power zone model matching the Cloud API schema"""
-
-    id: int = Field(description="Unique power zone identifier")
-    user_id: int = Field(description="User ID who owns the power zones")
-    zone_1: int = Field(description="Zone 1 power value")
-    zone_2: int = Field(description="Zone 2 power value")
-    zone_3: int = Field(description="Zone 3 power value")
-    zone_4: int = Field(description="Zone 4 power value")
-    zone_5: int = Field(description="Zone 5 power value")
-    zone_6: int = Field(description="Zone 6 power value")
-    zone_7: int = Field(description="Zone 7 power value")
-    ftp: int = Field(description="Functional Threshold Power")
-    zone_count: int = Field(description="Number of zones")
-    workout_type_id: int = Field(description="Workout type ID")
-    workout_type_family_id: int = Field(description="Workout type family ID")
-    workout_type_location_id: int = Field(description="Workout type location ID")
-    critical_power: Optional[int] = Field(None, description="Critical power")
-    created_at: str = Field(description="Creation timestamp in ISO 8601 format")
-    updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
-
-    def get_workout_type(self) -> WorkoutType:
-        """Get the WorkoutType enum for this power zone"""
-        return WorkoutType.from_id(self.workout_type_id)
-
-
-class Workout(BaseModel):
-    """Wahoo workout model matching the Cloud API schema"""
-
-    id: int = Field(description="Unique workout identifier")
-    starts: str = Field(description="Workout start time in ISO 8601 format")
-    minutes: int = Field(description="Workout duration in minutes")
-    name: str = Field(description="Workout name")
-    plan_id: Optional[int] = Field(None, description="Associated plan ID")
-    route_id: Optional[int] = Field(None, description="Associated route ID")
-    workout_token: str = Field(description="Application-specific identifier")
-    workout_type_id: int = Field(description="Type of workout")
-    workout_summary: Optional[Dict[str, Any]] = Field(
-        None, description="Workout results/summary data"
-    )
-    created_at: str = Field(description="Creation timestamp in ISO 8601 format")
-    updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
-
-    def duration_str(self) -> str:
-        """Format duration as a readable string"""
-        if self.minutes < 60:
-            return f"{self.minutes} minutes"
-        hours = self.minutes // 60
-        remaining_minutes = self.minutes % 60
-        if remaining_minutes == 0:
-            return f"{hours} hour{'s' if hours != 1 else ''}"
-        return f"{hours}h {remaining_minutes}m"
-
-    def formatted_start_time(self) -> str:
-        """Format start time for display"""
-        from datetime import datetime
-
-        try:
-            dt = datetime.fromisoformat(self.starts.replace("Z", "+00:00"))
-            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-        except Exception:
-            return self.starts
-
-    def get_workout_type(self) -> WorkoutType:
-        """Get the WorkoutType enum for this workout"""
-        return WorkoutType.from_id(self.workout_type_id)
-
-    def workout_type_description(self) -> str:
-        """Get the human-readable workout type description"""
-        return str(self.get_workout_type())
 
 
 class WahooAPIClient:
@@ -992,52 +538,16 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 if not workouts:
                     return [TextContent(type="text", text="No workouts found.")]
 
-                result = f"Found {len(workouts)} workouts:\n\n"
-                for workout in workouts:
-                    workout_type = workout.get_workout_type()
-                    result += f"- ID: {workout.id}\n"
-                    result += f"  Name: {workout.name}\n"
-                    result += f"  Date: {workout.formatted_start_time()}\n"
-                    result += f"  Duration: {workout.duration_str()}\n"
-                    result += f"  Type: {workout_type.description} ({workout_type.location.value}, {workout_type.family.value})\n"
-                    if workout.plan_id:
-                        result += f"  Plan ID: {workout.plan_id}\n"
-                    if workout.route_id:
-                        result += f"  Route ID: {workout.route_id}\n"
-                    result += "\n"
-
+                formatted_workouts = "\n\n".join(
+                    workout.format_summary() for workout in workouts
+                )
+                result = f"Found {len(workouts)} workouts:\n\n{formatted_workouts}"
                 return [TextContent(type="text", text=result)]
 
             elif name == "get_workout":
                 workout_id = arguments["workout_id"]
                 workout = await client.get_workout(workout_id)
-
-                workout_type = workout.get_workout_type()
-                result = f"Workout Details (ID: {workout.id}):\n"
-                result += f"- Name: {workout.name}\n"
-                result += f"- Start Time: {workout.formatted_start_time()}\n"
-                result += f"- Duration: {workout.duration_str()}\n"
-                result += f"- Type: {workout_type.description}\n"
-                result += f"- Location: {workout_type.location.value}\n"
-                result += f"- Family: {workout_type.family.value}\n"
-                result += f"- Workout Token: {workout.workout_token}\n"
-
-                if workout.plan_id:
-                    result += f"- Plan ID: {workout.plan_id}\n"
-                if workout.route_id:
-                    result += f"- Route ID: {workout.route_id}\n"
-
-                result += f"- Created: {workout.created_at}\n"
-                result += f"- Updated: {workout.updated_at}\n"
-
-                if workout.workout_summary:
-                    result += "- Has Summary: Yes\n"
-                else:
-                    result += "- Has Summary: No\n"
-
-                result += f"\nFull JSON:\n{json.dumps(workout.model_dump(), indent=2)}"
-
-                return [TextContent(type="text", text=result)]
+                return [TextContent(type="text", text=workout.format_details())]
 
             elif name == "list_routes":
                 routes = await client.list_routes(
@@ -1047,49 +557,16 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 if not routes:
                     return [TextContent(type="text", text="No routes found.")]
 
-                result = f"Found {len(routes)} routes:\n\n"
-                for route in routes:
-                    result += f"- ID: {route.id}\n"
-                    result += f"  Name: {route.name}\n"
-                    if route.description:
-                        result += f"  Description: {route.description}\n"
-                    if route.distance:
-                        result += f"  Distance: {route.distance:.1f}\n"
-                    if route.start_lat and route.start_lng:
-                        result += (
-                            f"  Start: {route.start_lat:.6f}, {route.start_lng:.6f}\n"
-                        )
-                    if route.external_id:
-                        result += f"  External ID: {route.external_id}\n"
-                    result += "\n"
-
+                formatted_routes = "\n\n".join(
+                    route.format_summary() for route in routes
+                )
+                result = f"Found {len(routes)} routes:\n\n{formatted_routes}"
                 return [TextContent(type="text", text=result)]
 
             elif name == "get_route":
                 route_id = arguments["route_id"]
                 route = await client.get_route(route_id)
-
-                result = f"Route Details (ID: {route.id}):\n"
-                result += f"- Name: {route.name}\n"
-                if route.description:
-                    result += f"- Description: {route.description}\n"
-                result += f"- User ID: {route.user_id}\n"
-                result += f"- Workout Type Family ID: {route.workout_type_family_id}\n"
-                if route.external_id:
-                    result += f"- External ID: {route.external_id}\n"
-                if route.start_lat and route.start_lng:
-                    result += f"- Start Position: {route.start_lat:.6f}, {route.start_lng:.6f}\n"
-                if route.distance:
-                    result += f"- Distance: {route.distance:.1f}\n"
-                if route.ascent:
-                    result += f"- Ascent: {route.ascent:.1f}\n"
-                if route.descent:
-                    result += f"- Descent: {route.descent:.1f}\n"
-                result += f"- File URL: {route.file.url}\n"
-
-                result += f"\nFull JSON:\n{json.dumps(route.model_dump(), indent=2)}"
-
-                return [TextContent(type="text", text=result)]
+                return [TextContent(type="text", text=route.format_details())]
 
             elif name == "list_plans":
                 plans = await client.list_plans(
@@ -1099,39 +576,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 if not plans:
                     return [TextContent(type="text", text="No plans found.")]
 
-                result = f"Found {len(plans)} plans:\n\n"
-                for plan in plans:
-                    result += f"- ID: {plan.id}\n"
-                    result += f"  Name: {plan.name}\n"
-                    if plan.description:
-                        result += f"  Description: {plan.description}\n"
-                    if plan.external_id:
-                        result += f"  External ID: {plan.external_id}\n"
-                    result += f"  Deleted: {plan.deleted}\n"
-                    result += "\n"
-
+                formatted_plans = "\n\n".join(plan.format_summary() for plan in plans)
+                result = f"Found {len(plans)} plans:\n\n{formatted_plans}"
                 return [TextContent(type="text", text=result)]
 
             elif name == "get_plan":
                 plan_id = arguments["plan_id"]
                 plan = await client.get_plan(plan_id)
-
-                result = f"Plan Details (ID: {plan.id}):\n"
-                result += f"- Name: {plan.name}\n"
-                if plan.description:
-                    result += f"- Description: {plan.description}\n"
-                result += f"- User ID: {plan.user_id}\n"
-                result += f"- Workout Type Family ID: {plan.workout_type_family_id}\n"
-                if plan.external_id:
-                    result += f"- External ID: {plan.external_id}\n"
-                if plan.provider_updated_at:
-                    result += f"- Provider Updated: {plan.provider_updated_at}\n"
-                result += f"- Deleted: {plan.deleted}\n"
-                result += f"- File URL: {plan.file.url}\n"
-
-                result += f"\nFull JSON:\n{json.dumps(plan.model_dump(), indent=2)}"
-
-                return [TextContent(type="text", text=result)]
+                return [TextContent(type="text", text=plan.format_details())]
 
             elif name == "list_power_zones":
                 power_zones = await client.list_power_zones()
@@ -1139,44 +591,14 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
                 if not power_zones:
                     return [TextContent(type="text", text="No power zones found.")]
 
-                result = f"Found {len(power_zones)} power zones:\n\n"
-                for pz in power_zones:
-                    workout_type = pz.get_workout_type()
-                    result += f"- ID: {pz.id}\n"
-                    result += f"  FTP: {pz.ftp}W\n"
-                    result += f"  Type: {workout_type.description}\n"
-                    result += f"  Zones: {pz.zone_1}W, {pz.zone_2}W, {pz.zone_3}W, {pz.zone_4}W, {pz.zone_5}W, {pz.zone_6}W, {pz.zone_7}W\n"
-                    if pz.critical_power:
-                        result += f"  Critical Power: {pz.critical_power}W\n"
-                    result += "\n"
-
+                formatted_zones = "\n\n".join(pz.format_summary() for pz in power_zones)
+                result = f"Found {len(power_zones)} power zones:\n\n{formatted_zones}"
                 return [TextContent(type="text", text=result)]
 
             elif name == "get_power_zone":
                 power_zone_id = arguments["power_zone_id"]
-                pz = await client.get_power_zone(power_zone_id)
-
-                workout_type = pz.get_workout_type()
-                result = f"Power Zone Details (ID: {pz.id}):\n"
-                result += f"- User ID: {pz.user_id}\n"
-                result += f"- FTP: {pz.ftp}W\n"
-                result += f"- Zone Count: {pz.zone_count}\n"
-                result += f"- Workout Type: {workout_type.description}\n"
-                result += f"- Zone 1: {pz.zone_1}W\n"
-                result += f"- Zone 2: {pz.zone_2}W\n"
-                result += f"- Zone 3: {pz.zone_3}W\n"
-                result += f"- Zone 4: {pz.zone_4}W\n"
-                result += f"- Zone 5: {pz.zone_5}W\n"
-                result += f"- Zone 6: {pz.zone_6}W\n"
-                result += f"- Zone 7: {pz.zone_7}W\n"
-                if pz.critical_power:
-                    result += f"- Critical Power: {pz.critical_power}W\n"
-                result += f"- Created: {pz.created_at}\n"
-                result += f"- Updated: {pz.updated_at}\n"
-
-                result += f"\nFull JSON:\n{json.dumps(pz.model_dump(), indent=2)}"
-
-                return [TextContent(type="text", text=result)]
+                power_zone = await client.get_power_zone(power_zone_id)
+                return [TextContent(type="text", text=power_zone.format_details())]
 
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]

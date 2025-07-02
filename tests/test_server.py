@@ -442,7 +442,7 @@ class TestMCPTools:
                 "src.server.WahooAPIClient.list_workouts", new_callable=AsyncMock
             ) as mock_list:
                 # Convert mock data to Workout objects
-                from src.server import Workout
+                from src.types import Workout
 
                 workout_objects = [
                     Workout(**w) for w in mock_workouts_response["workouts"]
@@ -465,7 +465,7 @@ class TestMCPTools:
                 "src.server.WahooAPIClient.get_workout", new_callable=AsyncMock
             ) as mock_get:
                 # Convert mock data to Workout object
-                from src.server import Workout
+                from src.types import Workout
 
                 workout_object = Workout(**mock_workout_detail)
                 mock_get.return_value = workout_object
@@ -660,7 +660,7 @@ class TestRefreshToken:
                     "src.server.WahooAPIClient.list_workouts", new_callable=AsyncMock
                 ) as mock_list:
                     # Convert mock data to Workout objects
-                    from src.server import Workout
+                    from src.types import Workout
 
                     workout_objects = [
                         Workout(**w) for w in mock_workouts_response["workouts"]
