@@ -361,14 +361,6 @@ class WahooConfig(BaseModel):
     )
 
 
-class WorkoutSummary(BaseModel):
-    """Workout summary/results data"""
-
-    # This can be extended based on actual API response structure
-    # For now, accepting any structure since it can be null
-    pass
-
-
 class Workout(BaseModel):
     """Wahoo workout model matching the Cloud API schema"""
 
@@ -380,8 +372,8 @@ class Workout(BaseModel):
     route_id: Optional[int] = Field(None, description="Associated route ID")
     workout_token: str = Field(description="Application-specific identifier")
     workout_type_id: int = Field(description="Type of workout")
-    workout_summary: Optional[WorkoutSummary] = Field(
-        None, description="Workout results"
+    workout_summary: Optional[Dict[str, Any]] = Field(
+        None, description="Workout results/summary data"
     )
     created_at: str = Field(description="Creation timestamp in ISO 8601 format")
     updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
