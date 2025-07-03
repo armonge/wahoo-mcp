@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
-import os
 import logging
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any
+
 import httpx
-from pydantic import BaseModel, Field
-from mcp.server import Server
-from mcp.types import Tool, TextContent
-from mcp.server.stdio import stdio_server
 from dotenv import load_dotenv
+from mcp.server import Server
+from mcp.server.stdio import stdio_server
+from mcp.types import TextContent, Tool
+from pydantic import BaseModel, Field
+
+from .models import Plan, PowerZone, Route, Workout
 from .token_store import TokenStore
-from .models import Workout, Route, Plan, PowerZone
 
 # Load environment variables
 load_dotenv()
@@ -39,7 +41,7 @@ class WahooAPIClient:
             headers=self._get_headers(),
         )
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Get current headers with valid access token"""
         return {
             "Authorization": f"Bearer {self.token_data.access_token}",
@@ -65,7 +67,8 @@ class WahooAPIClient:
                 "refresh_token": self.token_data.refresh_token,
             }
 
-            # Check if we should use client_secret (confidential client) or code_verifier (public client)
+            # Check if we should use client_secret (confidential client) or
+            # code_verifier (public client)
             client_secret = os.getenv("WAHOO_CLIENT_SECRET")
             if client_secret:
                 # Confidential client: use client_secret
@@ -101,7 +104,8 @@ class WahooAPIClient:
                     return True
                 else:
                     logger.error(
-                        f"Failed to refresh token: {response.status_code} - {response.text}"
+                        f"Failed to refresh token: {response.status_code} - "
+                        f"{response.text}"
                     )
                     return False
 
@@ -130,9 +134,9 @@ class WahooAPIClient:
         self,
         page: int = 1,
         per_page: int = 30,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-    ) -> List[Workout]:
+        start_date: str | None = None,
+        end_date: str | None = None,
+    ) -> list[Workout]:
         await self._ensure_valid_token()
 
         params = {"page": page, "per_page": per_page}
@@ -198,9 +202,9 @@ class WahooAPIClient:
             return Workout(**workout_dict)
         except Exception as e:
             logger.error(f"Failed to parse workout {workout_id}: {e}")
-            raise ValueError(f"Invalid workout data received from API: {e}")
+            raise ValueError(f"Invalid workout data received from API: {e}") from e
 
-    async def list_routes(self, external_id: Optional[str] = None) -> List[Route]:
+    async def list_routes(self, external_id: str | None = None) -> list[Route]:
         await self._ensure_valid_token()
 
         params = {}
@@ -270,9 +274,9 @@ class WahooAPIClient:
             return Route(**route_dict)
         except Exception as e:
             logger.error(f"Failed to parse route {route_id}: {e}")
-            raise ValueError(f"Invalid route data received from API: {e}")
+            raise ValueError(f"Invalid route data received from API: {e}") from e
 
-    async def list_plans(self, external_id: Optional[str] = None) -> List[Plan]:
+    async def list_plans(self, external_id: str | None = None) -> list[Plan]:
         await self._ensure_valid_token()
 
         params = {}
@@ -342,9 +346,9 @@ class WahooAPIClient:
             return Plan(**plan_dict)
         except Exception as e:
             logger.error(f"Failed to parse plan {plan_id}: {e}")
-            raise ValueError(f"Invalid plan data received from API: {e}")
+            raise ValueError(f"Invalid plan data received from API: {e}") from e
 
-    async def list_power_zones(self) -> List[PowerZone]:
+    async def list_power_zones(self) -> list[PowerZone]:
         await self._ensure_valid_token()
 
         response = await self.client.get("/v1/power_zones")
@@ -379,7 +383,8 @@ class WahooAPIClient:
                 power_zones.append(power_zone)
             except Exception as e:
                 logger.warning(
-                    f"Failed to parse power zone {power_zone_dict.get('id', 'unknown')}: {e}"
+                    f"Failed to parse power zone "
+                    f"{power_zone_dict.get('id', 'unknown')}: {e}"
                 )
                 # Continue with other power zones instead of failing completely
                 continue
@@ -410,14 +415,14 @@ class WahooAPIClient:
             return PowerZone(**power_zone_dict)
         except Exception as e:
             logger.error(f"Failed to parse power zone {power_zone_id}: {e}")
-            raise ValueError(f"Invalid power zone data received from API: {e}")
+            raise ValueError(f"Invalid power zone data received from API: {e}") from e
 
 
 app = Server("wahoo-mcp")
 
 
 @app.list_tools()
-async def list_tools() -> List[Tool]:
+async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="list_workouts",
@@ -437,11 +442,15 @@ async def list_tools() -> List[Tool]:
                     },
                     "start_date": {
                         "type": "string",
-                        "description": "Filter workouts created after this date (ISO 8601 format)",
+                        "description": (
+                            "Filter workouts created after this date (ISO 8601 format)"
+                        ),
                     },
                     "end_date": {
                         "type": "string",
-                        "description": "Filter workouts created before this date (ISO 8601 format)",
+                        "description": (
+                            "Filter workouts created before this date (ISO 8601 format)"
+                        ),
                     },
                 },
             },
@@ -540,7 +549,7 @@ async def list_tools() -> List[Tool]:
 
 
 @app.call_tool()
-async def call_tool(name: str, arguments: Any) -> List[TextContent]:
+async def call_tool(name: str, arguments: Any) -> list[TextContent]:
     config = WahooConfig()
 
     try:

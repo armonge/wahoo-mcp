@@ -4,8 +4,9 @@ Pydantic models for Wahoo API data structures
 """
 
 import json
-from typing import Any, Dict, Optional
 from enum import Enum
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -357,15 +358,15 @@ class Route(BaseModel):
     id: int = Field(description="Unique route identifier")
     user_id: int = Field(description="User ID who owns the route")
     name: str = Field(description="Route name")
-    description: Optional[str] = Field(None, description="Route description")
+    description: str | None = Field(None, description="Route description")
     file: RouteFile = Field(description="Route file information")
     workout_type_family_id: int = Field(description="Workout type family ID")
-    external_id: Optional[str] = Field(None, description="External route ID")
-    start_lat: Optional[float] = Field(None, description="Starting latitude")
-    start_lng: Optional[float] = Field(None, description="Starting longitude")
-    distance: Optional[float] = Field(None, description="Route distance")
-    ascent: Optional[float] = Field(None, description="Route ascent")
-    descent: Optional[float] = Field(None, description="Route descent")
+    external_id: str | None = Field(None, description="External route ID")
+    start_lat: float | None = Field(None, description="Starting latitude")
+    start_lng: float | None = Field(None, description="Starting longitude")
+    distance: float | None = Field(None, description="Route distance")
+    ascent: float | None = Field(None, description="Route ascent")
+    descent: float | None = Field(None, description="Route descent")
 
     def format_summary(self) -> str:
         """Format route for list display"""
@@ -423,11 +424,11 @@ class Plan(BaseModel):
     id: int = Field(description="Unique plan identifier")
     user_id: int = Field(description="User ID who owns the plan")
     name: str = Field(description="Plan name")
-    description: Optional[str] = Field(None, description="Plan description")
+    description: str | None = Field(None, description="Plan description")
     file: PlanFile = Field(description="Plan file information")
     workout_type_family_id: int = Field(description="Workout type family ID")
-    external_id: Optional[str] = Field(None, description="External plan ID")
-    provider_updated_at: Optional[str] = Field(
+    external_id: str | None = Field(None, description="External plan ID")
+    provider_updated_at: str | None = Field(
         None, description="Provider update timestamp"
     )
     deleted: bool = Field(default=False, description="Whether the plan is deleted")
@@ -488,7 +489,7 @@ class PowerZone(BaseModel):
     workout_type_id: int = Field(description="Workout type ID")
     workout_type_family_id: int = Field(description="Workout type family ID")
     workout_type_location_id: int = Field(description="Workout type location ID")
-    critical_power: Optional[int] = Field(None, description="Critical power")
+    critical_power: int | None = Field(None, description="Critical power")
     created_at: str = Field(description="Creation timestamp in ISO 8601 format")
     updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
 
@@ -503,7 +504,10 @@ class PowerZone(BaseModel):
             f"- ID: {self.id}",
             f"  FTP: {self.ftp}W",
             f"  Type: {workout_type.description}",
-            f"  Zones: {self.zone_1}W, {self.zone_2}W, {self.zone_3}W, {self.zone_4}W, {self.zone_5}W, {self.zone_6}W, {self.zone_7}W",
+            (
+                f"  Zones: {self.zone_1}W, {self.zone_2}W, {self.zone_3}W, "
+                f"{self.zone_4}W, {self.zone_5}W, {self.zone_6}W, {self.zone_7}W"
+            ),
         ]
 
         if self.critical_power:
@@ -547,11 +551,11 @@ class Workout(BaseModel):
     starts: str = Field(description="Workout start time in ISO 8601 format")
     minutes: int = Field(description="Workout duration in minutes")
     name: str = Field(description="Workout name")
-    plan_id: Optional[int] = Field(None, description="Associated plan ID")
-    route_id: Optional[int] = Field(None, description="Associated route ID")
+    plan_id: int | None = Field(None, description="Associated plan ID")
+    route_id: int | None = Field(None, description="Associated route ID")
     workout_token: str = Field(description="Application-specific identifier")
     workout_type_id: int = Field(description="Type of workout")
-    workout_summary: Optional[Dict[str, Any]] = Field(
+    workout_summary: dict[str, Any] | None = Field(
         None, description="Workout results/summary data"
     )
     created_at: str = Field(description="Creation timestamp in ISO 8601 format")
@@ -593,7 +597,10 @@ class Workout(BaseModel):
             f"  Name: {self.name}",
             f"  Date: {self.formatted_start_time()}",
             f"  Duration: {self.duration_str()}",
-            f"  Type: {workout_type.description} ({workout_type.location.value}, {workout_type.family.value})",
+            (
+                f"  Type: {workout_type.description} "
+                f"({workout_type.location.value}, {workout_type.family.value})"
+            ),
         ]
 
         if self.plan_id:

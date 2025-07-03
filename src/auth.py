@@ -5,18 +5,20 @@ Run this script to obtain an access token
 """
 
 import asyncio
-import webbrowser
-from urllib.parse import urlencode
-from aiohttp import web
-import secrets
 import base64
 import hashlib
 import logging
-import sys
 import os
+import secrets
+import sys
 import time
+import webbrowser
+from urllib.parse import urlencode
+
+from aiohttp import web
 from dotenv import load_dotenv
-from token_store import TokenStore, TokenData
+
+from token_store import TokenData, TokenStore
 
 # Load environment variables
 load_dotenv()
@@ -92,7 +94,8 @@ token_file = os.getenv("WAHOO_TOKEN_FILE")
 if not token_file:
     print("❌ Error: WAHOO_TOKEN_FILE environment variable is required")
     print(
-        "Set it to the path where tokens should be stored (e.g., export WAHOO_TOKEN_FILE=token.json)"
+        "Set it to the path where tokens should be stored "
+        "(e.g., export WAHOO_TOKEN_FILE=token.json)"
     )
     sys.exit(1)
 
@@ -164,8 +167,10 @@ async def callback_handler(request):
                 if refresh_token:
                     refresh_display = f"""
                     <details style="margin-top: 10px;">
-                    <summary style="cursor: pointer;">Refresh Token (click to show)</summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{refresh_token}</pre>
+                    <summary style="cursor: pointer;">Refresh Token (click to show)
+                    </summary>
+                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+                    overflow-x: auto;">{refresh_token}</pre>
                     </details>
                     """
 
@@ -177,13 +182,17 @@ async def callback_handler(request):
                     <p>Your tokens have been obtained.</p>
                     <p>You can close this window and return to the terminal.</p>
                     <details style="margin-top: 20px;">
-                    <summary style="cursor: pointer;">Access Token (click to show)</summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{access_token}</pre>
+                    <summary style="cursor: pointer;">Access Token (click to show)
+                    </summary>
+                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+                    overflow-x: auto;">{access_token}</pre>
                     </details>
                     {refresh_display}
                     <details style="margin-top: 10px;">
-                    <summary style="cursor: pointer;">Code Verifier (click to show)</summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px; overflow-x: auto;">{code_verifier}</pre>
+                    <summary style="cursor: pointer;">Code Verifier (click to show)
+                    </summary>
+                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+                    overflow-x: auto;">{code_verifier}</pre>
                     </details>
                     </body>
                     </html>
@@ -196,7 +205,10 @@ async def callback_handler(request):
                 )
                 logger.error(f"Response: {response.text}")
                 return web.Response(
-                    text=f"Error exchanging code for token: {response.status_code} - {response.text}",
+                    text=(
+                        f"Error exchanging code for token: {response.status_code} - "
+                        f"{response.text}"
+                    ),
                     status=500,
                 )
         except Exception as e:
@@ -230,7 +242,8 @@ async def start_server():
         logger.error(f"Failed to start server: {e}")
         if "Address already in use" in str(e):
             logger.error(
-                f"Port {PORT} is already in use. Please close any other applications using this port."
+                f"Port {PORT} is already in use. Please close any other "
+                "applications using this port."
             )
         await runner.cleanup()
         return

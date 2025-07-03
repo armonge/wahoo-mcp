@@ -3,13 +3,13 @@
 Token storage and management for Wahoo API
 """
 
-import os
 import json
-import time
-from typing import Optional, Dict, Any
-from pathlib import Path
-from dataclasses import dataclass, asdict
 import logging
+import os
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,9 +19,9 @@ class TokenData:
     """Container for OAuth token data"""
 
     access_token: str
-    refresh_token: Optional[str] = None
-    code_verifier: Optional[str] = None
-    expires_at: Optional[float] = None
+    refresh_token: str | None = None
+    code_verifier: str | None = None
+    expires_at: float | None = None
     token_type: str = "Bearer"
 
     def is_expired(self, buffer_seconds: int = 300) -> bool:
@@ -30,12 +30,12 @@ class TokenData:
             return False
         return time.time() >= (self.expires_at - buffer_seconds)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return {k: v for k, v in asdict(self).items() if v is not None}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TokenData":
+    def from_dict(cls, data: dict[str, Any]) -> "TokenData":
         """Create from dictionary"""
         return cls(**{k: v for k, v in data.items() if k in cls.__annotations__})
 
@@ -47,13 +47,13 @@ class TokenStore:
         if not token_file:
             raise ValueError("token_file is required")
         self.token_file = Path(token_file)
-        self._token_data: Optional[TokenData] = None
+        self._token_data: TokenData | None = None
 
-    def load(self) -> Optional[TokenData]:
+    def load(self) -> TokenData | None:
         """Load tokens from file"""
         if self.token_file.exists():
             try:
-                with open(self.token_file, "r") as f:
+                with open(self.token_file) as f:
                     data = json.load(f)
                     self._token_data = TokenData.from_dict(data)
                     logger.info(f"Loaded tokens from file: {self.token_file}")
@@ -84,7 +84,7 @@ class TokenStore:
         except Exception as e:
             logger.error(f"Failed to save token file: {e}")
 
-    def update_from_response(self, response_data: Dict[str, Any]) -> TokenData:
+    def update_from_response(self, response_data: dict[str, Any]) -> TokenData:
         """Update tokens from OAuth response"""
         # Calculate expiry time
         expires_at = None
@@ -107,7 +107,7 @@ class TokenStore:
         self.save(token_data)
         return token_data
 
-    def get_current(self) -> Optional[TokenData]:
+    def get_current(self) -> TokenData | None:
         """Get current token data"""
         if not self._token_data:
             self._token_data = self.load()

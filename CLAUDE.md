@@ -4,7 +4,7 @@
 This is a Model Context Protocol (MCP) server that provides access to Wahoo Cloud API for retrieving workout data.
 
 ## Requirements
-- Python 3.11+ (tested with 3.13)
+- Python 3.13+ (strictly enforced)
 - uv package manager (recommended) or pip
 - Wahoo API credentials (Client ID and Secret)
 - Active Wahoo account with workout data
@@ -31,7 +31,11 @@ pre-commit run --all-files
 
 ### Testing
 ```bash
-pytest -v
+# Run basic tests
+make test
+
+# Run tests with coverage
+make test-cov
 ```
 
 ### Code Quality
@@ -40,13 +44,19 @@ pytest -v
 pre-commit run --all-files
 
 # Run ruff linting
-ruff check .
+make lint
 
 # Run ruff formatting
-ruff format .
+make format
+
+# Run all checks (lint + format + test)
+make check
+
+# Run complete CI workflow
+make ci
 ```
 
-**IMPORTANT**: Always run `ruff check .` after making any code updates to ensure code quality standards are met.
+**IMPORTANT**: Always run `make check` or `ruff check .` after making any code updates to ensure code quality standards are met.
 
 ### Development Setup
 ```bash
@@ -64,16 +74,28 @@ pre-commit install
 
 ### Main Components
 - **WahooAPIClient**: HTTP client for Wahoo Cloud API
-- **MCP Server**: Provides `list_workouts` and `get_workout` tools
+- **MCP Server**: Provides 8 tools for workouts, routes, plans, and power zones
 - **Authentication**: Uses token file specified by `WAHOO_TOKEN_FILE` environment variable
 
 ### API Endpoints
 - `GET /v1/workouts` - List workouts with pagination and date filters
 - `GET /v1/workouts/{id}` - Get detailed workout information
+- `GET /v1/routes` - List routes with optional external_id filter
+- `GET /v1/routes/{id}` - Get detailed route information
+- `GET /v1/plans` - List plans with optional external_id filter
+- `GET /v1/plans/{id}` - Get detailed plan information
+- `GET /v1/power_zones` - List power zones for the user
+- `GET /v1/power_zones/{id}` - Get detailed power zone information
 
 ### MCP Tools
 1. **list_workouts**: List workouts with optional filters (page, per_page, start_date, end_date)
 2. **get_workout**: Get detailed workout information by ID
+3. **list_routes**: List routes with optional external_id filter
+4. **get_route**: Get detailed route information by ID
+5. **list_plans**: List plans with optional external_id filter
+6. **get_plan**: Get detailed plan information by ID
+7. **list_power_zones**: List power zones for the user
+8. **get_power_zone**: Get detailed power zone information by ID
 
 ## Testing Strategy
 
@@ -98,9 +120,23 @@ pre-commit install
 
 ### Development Workflow
 1. Make changes
-2. Run tests: `pytest -v`
-3. Pre-commit hooks run automatically on commit
-4. All checks must pass before commit
+2. Run tests: `make test`
+3. Run code quality checks: `make check`
+4. Pre-commit hooks run automatically on commit
+5. All checks must pass before commit
+
+### CI/CD Pipeline
+The project uses GitHub Actions for automated testing and quality checks:
+
+- **Pull Requests**: Runs full test suite, linting, and formatting checks
+- **Main Branch**: Additional build step after tests pass
+- **Security**: Integrated ruff security checks (flake8-bandit rules)
+- **Coverage**: Automatic coverage reporting to Codecov
+
+Key features:
+- Uses Makefile commands for consistency between local and CI
+- Tests on Python 3.13 only (matching project requirements)
+- Automatic dependency updates via Dependabot
 
 ## Environment Variables
 - `WAHOO_TOKEN_FILE`: Required - path to file for persistent token storage
@@ -144,6 +180,7 @@ Parameters:
 ```
 src/
 ├── server.py          # Main MCP server implementation
+├── models.py          # Pydantic models for all API data structures
 ├── auth.py            # OAuth authentication helper script
 ├── token_store.py     # Token storage and refresh management
 └── __init__.py
@@ -251,7 +288,7 @@ pytest --cov=src --cov-report=html
 4. **Import errors**
    - Ensure virtual environment is activated
    - Run `uv sync` to install dependencies
-   - Check Python version (requires 3.11+)
+   - Check Python version (requires 3.13+)
 
 5. **Pre-commit failures**
    - Run `pre-commit install` to set up hooks
@@ -304,9 +341,18 @@ pytest --cov=src --cov-report=html
 ### Git Workflow
 1. Create feature branch from main
 2. Make atomic commits with clear messages
-3. Ensure all tests pass
+3. Ensure all tests pass: `make check`
 4. Run pre-commit hooks
 5. Create PR with description and test plan
+
+### Security Configuration
+The project uses ruff's built-in security checks (flake8-bandit) instead of separate security tools:
+
+- **S101-S110**: Various security rule categories
+- **Per-file ignores**: Test files have appropriate exceptions
+- **Token storage**: Special handling for false positives in token_store.py
+
+This approach integrates security scanning directly into the main linting workflow.
 
 ## Useful Resources
 
