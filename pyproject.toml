@@ -10,6 +10,9 @@ dependencies = [
   "pydantic>=2.0.0",
   "aiohttp>=3.9.0",
   "python-dotenv>=1.0.0",
+  "folium>=0.20.0",
+  "plotly>=6.2.0",
+  "fitparse>=1.2.0",
 ]
 
 [project.optional-dependencies]

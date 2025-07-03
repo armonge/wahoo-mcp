@@ -266,6 +266,21 @@ Example:
 Use the get_power_zone tool to get details for power zone ID 321
 ```
 
+#### generate_workout_visualizations
+Generate interactive HTML visualizations for workouts with FIT file data (GPS, heart rate, power, etc.).
+
+Parameters:
+- `workout_id` (required): The ID of the workout to visualize
+- `include_route_map` (optional): Generate interactive route map with elevation coloring (default: true)
+- `include_elevation_chart` (optional): Generate elevation profile and heart rate chart (default: true)
+
+Example:
+```
+Use the generate_workout_visualizations tool to create maps and charts for workout ID 12345
+```
+
+**Note**: This tool requires workouts that have FIT files with GPS data. The generated HTML can be saved to files and opened in a web browser for interactive viewing.
+
 ## Development
 
 ### Running Tests
