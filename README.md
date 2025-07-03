@@ -119,15 +119,6 @@ The auth server can be configured via environment variables:
    # Redirect URL will be: https://your-app.ngrok.io:443/callback
    ```
 
-3. **Docker with port mapping:**
-   ```env
-   WAHOO_AUTH_HOST=0.0.0.0
-   WAHOO_AUTH_PORT=8080
-   WAHOO_REDIRECT_HOST=localhost
-   WAHOO_REDIRECT_PORT=8888
-   # Server binds to 0.0.0.0:8080, redirect URL is http://localhost:8888/callback
-   ```
-
 **Note**: When registering your app with Wahoo, use the redirect URL that matches your configuration.
 
 ## Usage
