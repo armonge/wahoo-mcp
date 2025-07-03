@@ -316,4 +316,4 @@ For full API documentation, see [Wahoo Cloud API](https://cloud-api.wahooligan.c
 
 ## License
 
-This project is provided as-is for educational and development purposes.
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
