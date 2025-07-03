@@ -418,7 +418,7 @@ class TestMCPTools:
         from src.server import list_tools
 
         tools = await list_tools()
-        assert len(tools) == 8
+        assert len(tools) == 9
 
         tool_names = [tool.name for tool in tools]
         expected_tools = [
@@ -430,6 +430,7 @@ class TestMCPTools:
             "get_plan",
             "list_power_zones",
             "get_power_zone",
+            "generate_workout_visualizations",
         ]
 
         for expected_tool in expected_tools:

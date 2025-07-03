@@ -561,6 +561,11 @@ class Workout(BaseModel):
     created_at: str = Field(description="Creation timestamp in ISO 8601 format")
     updated_at: str = Field(description="Last update timestamp in ISO 8601 format")
 
+    # Optional FIT analysis data (added dynamically)
+    fit_analysis: dict[str, Any] | None = Field(
+        None, exclude=True, description="FIT file analysis data"
+    )
+
     def duration_str(self) -> str:
         """Format duration as a readable string"""
         if self.minutes < 60:
@@ -610,7 +615,7 @@ class Workout(BaseModel):
 
         return "\n".join(lines)
 
-    def format_details(self) -> str:
+    def format_details(self, include_fit_analysis: str = "") -> str:
         """Format workout for detailed display"""
         workout_type = self.get_workout_type()
         details = f"""Workout Details (ID: {self.id}):
@@ -630,7 +635,13 @@ class Workout(BaseModel):
         details += f"""
 - Created: {self.created_at}
 - Updated: {self.updated_at}
-- Has Summary: {"Yes" if self.workout_summary else "No"}
+- Has Summary: {"Yes" if self.workout_summary else "No"}"""
+
+        # Add FIT analysis if provided
+        if include_fit_analysis:
+            details += f"\n\n{include_fit_analysis}"
+
+        details += f"""
 
 Full JSON:
 {json.dumps(self.model_dump(), indent=2)}"""

@@ -74,7 +74,7 @@ pre-commit install
 
 ### Main Components
 - **WahooAPIClient**: HTTP client for Wahoo Cloud API
-- **MCP Server**: Provides 8 tools for workouts, routes, plans, and power zones
+- **MCP Server**: Provides 9 tools for workouts, routes, plans, power zones, and FIT visualizations
 - **Authentication**: Uses token file specified by `WAHOO_TOKEN_FILE` environment variable
 
 ### API Endpoints
@@ -89,13 +89,14 @@ pre-commit install
 
 ### MCP Tools
 1. **list_workouts**: List workouts with optional filters (page, per_page, start_date, end_date)
-2. **get_workout**: Get detailed workout information by ID
+2. **get_workout**: Get detailed workout information by ID with optional FIT analysis
 3. **list_routes**: List routes with optional external_id filter
 4. **get_route**: Get detailed route information by ID
 5. **list_plans**: List plans with optional external_id filter
 6. **get_plan**: Get detailed plan information by ID
 7. **list_power_zones**: List power zones for the user
 8. **get_power_zone**: Get detailed power zone information by ID
+9. **generate_workout_visualizations**: Generate interactive HTML visualizations (maps, charts) for FIT data
 
 ## Testing Strategy
 

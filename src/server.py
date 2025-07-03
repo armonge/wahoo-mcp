@@ -10,6 +10,13 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 from pydantic import BaseModel, Field
 
+from .fit_analysis import (
+    FitFileAnalyzer,
+    compress_html,
+    enhance_workout_with_fit_analysis,
+    format_fit_analysis,
+    html_to_base64,
+)
 from .models import Plan, PowerZone, Route, Workout
 from .token_store import TokenStore
 
@@ -178,7 +185,9 @@ class WahooAPIClient:
 
         return workouts
 
-    async def get_workout(self, workout_id: int) -> Workout:
+    async def get_workout(
+        self, workout_id: int, include_fit_analysis: bool = False
+    ) -> Workout:
         await self._ensure_valid_token()
 
         response = await self.client.get(f"/v1/workouts/{workout_id}")
@@ -199,7 +208,16 @@ class WahooAPIClient:
         workout_dict = response.json()
 
         try:
-            return Workout(**workout_dict)
+            workout = Workout(**workout_dict)
+
+            # Enhance with FIT analysis if requested
+            if include_fit_analysis:
+                enhanced_data = await enhance_workout_with_fit_analysis(workout_dict)
+                # Store the FIT analysis data in the workout object for later formatting
+                if "fit_analysis" in enhanced_data:
+                    workout.fit_analysis = enhanced_data["fit_analysis"]
+
+            return workout
         except Exception as e:
             logger.error(f"Failed to parse workout {workout_id}: {e}")
             raise ValueError(f"Invalid workout data received from API: {e}") from e
@@ -457,14 +475,19 @@ async def list_tools() -> list[Tool]:
         ),
         Tool(
             name="get_workout",
-            description="Get detailed information about a specific workout",
+            description="Get detailed workout information with optional FIT analysis",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "workout_id": {
                         "type": "integer",
                         "description": "The ID of the workout to retrieve",
-                    }
+                    },
+                    "include_fit_analysis": {
+                        "type": "boolean",
+                        "description": "Include FIT file analysis (GPS, HR, power)",
+                        "default": True,
+                    },
                 },
                 "required": ["workout_id"],
             },
@@ -545,6 +568,42 @@ async def list_tools() -> list[Tool]:
                 "required": ["power_zone_id"],
             },
         ),
+        Tool(
+            name="generate_workout_visualizations",
+            description="Generate interactive HTML visualizations for workout FIT data",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "workout_id": {
+                        "type": "integer",
+                        "description": "The ID of the workout to visualize",
+                    },
+                    "include_route_map": {
+                        "type": "boolean",
+                        "description": "Generate interactive route map with elevation",
+                        "default": True,
+                    },
+                    "include_elevation_chart": {
+                        "type": "boolean",
+                        "description": "Generate elevation profile and HR chart",
+                        "default": True,
+                    },
+                    "optimize_size": {
+                        "type": "boolean",
+                        "description": "Optimize artifact size by reducing data points",
+                        "default": True,
+                    },
+                    "max_artifacts": {
+                        "type": "integer",
+                        "description": "Maximum number of artifacts to return (1 or 2)",
+                        "default": 2,
+                        "minimum": 1,
+                        "maximum": 2,
+                    },
+                },
+                "required": ["workout_id"],
+            },
+        ),
     ]
 
 
@@ -573,8 +632,26 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
 
             elif name == "get_workout":
                 workout_id = arguments["workout_id"]
-                workout = await client.get_workout(workout_id)
-                return [TextContent(type="text", text=workout.format_details())]
+                include_fit = arguments.get(
+                    "include_fit_analysis", True
+                )  # Default to True
+                workout = await client.get_workout(
+                    workout_id, include_fit_analysis=include_fit
+                )
+
+                # Format FIT analysis if available
+                fit_analysis_text = ""
+                if hasattr(workout, "fit_analysis") and workout.fit_analysis:
+                    fit_analysis_text = format_fit_analysis(workout.fit_analysis)
+
+                return [
+                    TextContent(
+                        type="text",
+                        text=workout.format_details(
+                            include_fit_analysis=fit_analysis_text
+                        ),
+                    )
+                ]
 
             elif name == "list_routes":
                 routes = await client.list_routes(
@@ -626,6 +703,168 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 power_zone_id = arguments["power_zone_id"]
                 power_zone = await client.get_power_zone(power_zone_id)
                 return [TextContent(type="text", text=power_zone.format_details())]
+
+            elif name == "generate_workout_visualizations":
+                workout_id = arguments["workout_id"]
+                include_route = arguments.get("include_route_map", True)
+                include_elevation = arguments.get("include_elevation_chart", True)
+                optimize_size = arguments.get("optimize_size", True)
+                max_artifacts = arguments.get("max_artifacts", 2)
+
+                # If max_artifacts is 1, prioritize route map over elevation chart
+                if max_artifacts == 1:
+                    if include_route and include_elevation:
+                        include_elevation = False  # Prioritize route map
+
+                # Get workout data to extract FIT file URL
+                workout = await client.get_workout(workout_id)
+                workout_dict = workout.model_dump()
+
+                # Check if workout has FIT file URL
+                fit_url = None
+                if workout_dict.get("workout_summary"):
+                    if isinstance(workout_dict["workout_summary"], dict):
+                        fit_url = (
+                            workout_dict["workout_summary"].get("file", {}).get("url")
+                        )
+
+                if not fit_url:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=f"❌ No FIT file available for workout {workout_id}. "
+                            "Visualizations require GPS/sensor data from FIT files.",
+                        )
+                    ]
+
+                # Create analyzer and parse FIT file
+                analyzer = FitFileAnalyzer(fit_url)
+                success = await analyzer.download_and_parse()
+
+                if not success:
+                    return [
+                        TextContent(
+                            type="text",
+                            text="❌ Failed to download or parse FIT file from URL",
+                        )
+                    ]
+
+                if not analyzer.records:
+                    return [
+                        TextContent(
+                            type="text",
+                            text="❌ No GPS data found in FIT file. "
+                            "Visualizations require GPS coordinates.",
+                        )
+                    ]
+
+                # Generate visualizations
+                result_data = {
+                    "workout_id": workout_id,
+                    "ready_for_artifacts": True,
+                    "artifacts": [],
+                    "metadata": {
+                        "gps_points": len(analyzer.records),
+                        "optimized": optimize_size,
+                        "original_gps_points": len(analyzer.records),
+                    },
+                }
+
+                # Add route map if requested
+                if include_route:
+                    route_map = analyzer.create_route_map()
+                    if route_map:
+                        map_html = route_map._repr_html_()
+
+                        # Compress the HTML
+                        compressed_html = compress_html(map_html)
+
+                        if optimize_size:
+                            # Test both compressed and base64 - use the smaller one
+                            base64_content = html_to_base64(map_html)
+                            if len(base64_content) < len(compressed_html):
+                                content = base64_content
+                                content_type = "text/html;base64"
+                            else:
+                                content = compressed_html
+                                content_type = "text/html;compressed"
+                        else:
+                            content = compressed_html
+                            content_type = "text/html"
+
+                        result_data["artifacts"].append(
+                            {
+                                "id": f"route_map_{workout_id}",
+                                "type": content_type,
+                                "title": f"Route Map - Workout {workout_id}",
+                                "content": content,
+                            }
+                        )
+
+                # Add elevation chart if requested
+                if include_elevation:
+                    elevation_chart = analyzer.create_elevation_chart()
+                    if elevation_chart:
+                        # Use CDN for Plotly to reduce size
+                        if optimize_size:
+                            # Use minimal Plotly config for smaller charts
+                            chart_html = elevation_chart.to_html(
+                                include_plotlyjs="cdn",
+                                config={"displayModeBar": False, "staticPlot": True},
+                            )
+                        else:
+                            chart_html = elevation_chart.to_html(include_plotlyjs="cdn")
+
+                        # Compress the HTML
+                        compressed_html = compress_html(chart_html)
+
+                        if optimize_size:
+                            # Test both compressed and base64 - use the smaller one
+                            base64_content = html_to_base64(chart_html)
+                            if len(base64_content) < len(compressed_html):
+                                content = base64_content
+                                content_type = "text/html;base64"
+                            else:
+                                content = compressed_html
+                                content_type = "text/html;compressed"
+                        else:
+                            content = compressed_html
+                            content_type = "text/html"
+
+                        result_data["artifacts"].append(
+                            {
+                                "id": f"elevation_chart_{workout_id}",
+                                "type": content_type,
+                                "title": f"Elevation Profile - Workout {workout_id}",
+                                "content": content,
+                            }
+                        )
+
+                # Add summary statistics to metadata
+                summary = analyzer.get_workout_summary()
+                if summary:
+                    result_data["metadata"].update(
+                        {
+                            "total_distance_km": summary.get("total_distance_km"),
+                            "elevation_gain_m": summary.get("elevation_gain_m"),
+                            "max_elevation_m": summary.get("max_elevation_m"),
+                            "min_elevation_m": summary.get("min_elevation_m"),
+                            "avg_heart_rate": summary.get("avg_heart_rate"),
+                            "max_heart_rate": summary.get("max_heart_rate"),
+                            "avg_power": summary.get("avg_power"),
+                            "max_power": summary.get("max_power"),
+                            "avg_speed_kmh": summary.get("avg_speed_kmh"),
+                            "max_speed_kmh": summary.get("max_speed_kmh"),
+                        }
+                    )
+
+                import json
+
+                return [
+                    TextContent(
+                        type="text", text=json.dumps(result_data, indent=2, default=str)
+                    )
+                ]
 
             else:
                 return [TextContent(type="text", text=f"Unknown tool: {name}")]
