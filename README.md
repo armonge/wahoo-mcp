@@ -4,10 +4,14 @@ A Model Context Protocol (MCP) server for interacting with the Wahoo Cloud API, 
 
 ## Features
 
-- List workouts with pagination and date filtering
-- Get detailed workout information
-- OAuth 2.0 authentication support
-- Async/await implementation using httpx
+- **Workouts**: List workouts with pagination and date filtering, get detailed workout information
+- **Routes**: List and retrieve saved cycling/running routes
+- **Training Plans**: Access training plans from your Wahoo account
+- **Power Zones**: View power zone configurations for different workout types
+- **OAuth 2.0 Authentication**: Secure authentication with automatic token refresh
+- **Comprehensive workout type support**: 72 different workout types with location and family categorization
+- **Async/await implementation**: High-performance async operations using httpx
+- **Automatic token management**: Tokens are refreshed automatically when they expire
 
 ## Installation
 
@@ -143,19 +147,54 @@ python -m src.server
 
 Add the following to your Claude Desktop configuration file:
 
+**Configuration file location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+**Example configuration:**
+
 ```json
 {
   "mcpServers": {
     "wahoo": {
-      "command": "python",
-      "args": ["-m", "src.server"],
+      "type": "stdio",
+      "command": "/path/to/uv",
+      "args": [
+        "--project",
+        "/path/to/wahoo-mcp",
+        "run",
+        "python",
+        "-m",
+        "src.server"
+      ],
       "env": {
-        "WAHOO_TOKEN_FILE": "/path/to/your/token.json"
+        "WAHOO_TOKEN_FILE": "/path/to/wahoo-mcp/token.json"
       }
     }
   }
 }
 ```
+
+**Alternative configuration (if you have Python in your PATH):**
+
+```json
+{
+  "mcpServers": {
+    "wahoo": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "src.server"],
+      "cwd": "/path/to/wahoo-mcp",
+      "env": {
+        "WAHOO_TOKEN_FILE": "/path/to/wahoo-mcp/token.json"
+      }
+    }
+  }
+}
+```
+
+Make sure to replace `/path/to/` with your actual paths.
 
 ### Available Tools
 
@@ -184,6 +223,71 @@ Example:
 Use the get_workout tool to get details for workout ID 12345
 ```
 
+#### list_routes
+List routes from your Wahoo account.
+
+Parameters:
+- `external_id` (optional): Filter routes by external ID
+
+Example:
+```
+Use the list_routes tool to show my saved routes
+```
+
+#### get_route
+Get detailed information about a specific route.
+
+Parameters:
+- `route_id` (required): The ID of the route to retrieve
+
+Example:
+```
+Use the get_route tool to get details for route ID 456
+```
+
+#### list_plans
+List training plans from your Wahoo account.
+
+Parameters:
+- `external_id` (optional): Filter plans by external ID
+
+Example:
+```
+Use the list_plans tool to show my training plans
+```
+
+#### get_plan
+Get detailed information about a specific plan.
+
+Parameters:
+- `plan_id` (required): The ID of the plan to retrieve
+
+Example:
+```
+Use the get_plan tool to get details for plan ID 789
+```
+
+#### list_power_zones
+List power zones from your Wahoo account.
+
+Parameters: None
+
+Example:
+```
+Use the list_power_zones tool to show my power zones
+```
+
+#### get_power_zone
+Get detailed information about a specific power zone.
+
+Parameters:
+- `power_zone_id` (required): The ID of the power zone to retrieve
+
+Example:
+```
+Use the get_power_zone tool to get details for power zone ID 321
+```
+
 ## Development
 
 ### Running Tests
@@ -205,7 +309,8 @@ wahoo-mcp/
 │   ├── __init__.py
 │   ├── server.py       # Main MCP server implementation
 │   ├── auth.py         # OAuth authentication helper
-│   └── token_store.py  # Token storage and refresh logic
+│   ├── token_store.py  # Token storage and refresh logic
+│   └── models.py       # Pydantic models for API data structures
 ├── tests/
 │   ├── __init__.py
 │   ├── test_server.py  # Server test suite
@@ -218,8 +323,21 @@ wahoo-mcp/
 
 The server implements the following Wahoo Cloud API endpoints:
 
-- `GET /v1/workouts` - List workouts
-- `GET /v1/workouts/{id}` - Get workout details
+**Workouts:**
+- `GET /v1/workouts` - List workouts with pagination and date filtering
+- `GET /v1/workouts/{id}` - Get detailed workout information
+
+**Routes:**
+- `GET /v1/routes` - List saved routes
+- `GET /v1/routes/{id}` - Get route details including GPS data
+
+**Training Plans:**
+- `GET /v1/plans` - List training plans
+- `GET /v1/plans/{id}` - Get plan details
+
+**Power Zones:**
+- `GET /v1/power_zones` - List power zone configurations
+- `GET /v1/power_zones/{id}` - Get specific power zone details
 
 For full API documentation, see [Wahoo Cloud API](https://cloud-api.wahooligan.com/).
 
