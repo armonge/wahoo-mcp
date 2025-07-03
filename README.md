@@ -167,24 +167,6 @@ Add the following to your Claude Desktop configuration file:
 }
 ```
 
-**Alternative configuration (if you have Python in your PATH):**
-
-```json
-{
-  "mcpServers": {
-    "wahoo": {
-      "type": "stdio",
-      "command": "python",
-      "args": ["-m", "src.server"],
-      "cwd": "/path/to/wahoo-mcp",
-      "env": {
-        "WAHOO_TOKEN_FILE": "/path/to/wahoo-mcp/token.json"
-      }
-    }
-  }
-}
-```
-
 Make sure to replace `/path/to/` with your actual paths.
 
 ### Available Tools
