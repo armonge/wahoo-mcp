@@ -9,7 +9,7 @@ from mcp.types import Tool, TextContent
 from mcp.server.stdio import stdio_server
 from dotenv import load_dotenv
 from .token_store import TokenStore
-from .types import Workout, Route, Plan, PowerZone
+from .models import Workout, Route, Plan, PowerZone
 
 # Load environment variables
 load_dotenv()
