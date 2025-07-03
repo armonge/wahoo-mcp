@@ -5,20 +5,19 @@ description = "MCP server for Wahoo Cloud API"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "mcp>=1.0.0",
-    "httpx>=0.27.0",
-    "pydantic>=2.0.0",
-    "aiohttp>=3.9.0",
-    "python-dotenv>=1.0.0",
+  "mcp>=1.0.0",
+  "httpx>=0.27.0",
+  "pydantic>=2.0.0",
+  "aiohttp>=3.9.0",
+  "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-httpx>=0.30.0",
-    "pytest-cov>=5.0.0",
-    "bandit>=1.7.0",
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-httpx>=0.30.0",
+  "pytest-cov>=5.0.0",
 ]
 
 [build-system]
@@ -30,11 +29,37 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = [
-  "src"
-]
+packages = ["src"]
 
 [dependency-groups]
-dev = [
-    "pre-commit>=4.2.0",
+dev = ["pre-commit>=4.2.0"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+  "E",  # pycodestyle errors
+  "W",  # pycodestyle warnings
+  "F",  # pyflakes
+  "I",  # isort
+  "B",  # flake8-bugbear
+  "S",  # flake8-bandit (security)
+  "UP", # pyupgrade
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+  "S101", # assert-used (allow assert in tests)
+  "S105", # hardcoded-password-string (allow in test fixtures)
+  "S106", # hardcoded-password-func-arg (allow in test fixtures)
+  "S108", # hardcoded-temp-file (allow in tests)
+  "S110", # try-except-pass (allow in test cleanup)
+]
+"test_auth.py" = [
+  "S110", # try-except-pass (allow in auth error handling)
+]
+"src/token_store.py" = [
+  "S105", # hardcoded-password-string (false positive for token_type = "Bearer")
 ]

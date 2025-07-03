@@ -1,11 +1,13 @@
-import pytest
-import time
-import tempfile
 import json
 import os
-from unittest.mock import patch, AsyncMock, MagicMock
+import tempfile
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from src.server import WahooAPIClient, WahooConfig
-from src.token_store import TokenStore, TokenData
+from src.token_store import TokenData, TokenStore
 
 
 @pytest.fixture
@@ -519,7 +521,7 @@ class TestRefreshToken:
         monkeypatch.setenv("WAHOO_TOKEN_FILE", temp_token_file)
 
         # Modify the token file to have an expired token
-        with open(temp_token_file, "r") as f:
+        with open(temp_token_file) as f:
             token_data = json.load(f)
         token_data["expires_at"] = time.time() - 100
         with open(temp_token_file, "w") as f:

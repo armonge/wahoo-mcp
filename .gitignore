@@ -54,3 +54,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# pytest-cov
+coverage.xml

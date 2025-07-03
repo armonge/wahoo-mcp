@@ -1,15 +1,28 @@
-.PHONY: install install-dev test run auth test-auth clean
+.PHONY: install install-dev test test-cov lint format check ci run auth test-auth clean
 
 install:
-	uv venv
-	uv pip install -e .
+	uv sync
 
 install-dev:
-	uv venv
-	uv pip install -e ".[dev]"
+	uv sync --all-extras
 
 test:
-	uv run pytest
+	uv run pytest -v
+
+test-cov:
+	uv run pytest -v --cov=src --cov-report=xml --cov-report=term
+
+lint:
+	uv run ruff check .
+
+format:
+	uv run ruff format .
+
+check: lint format test
+	@echo "All checks passed!"
+
+ci: install-dev check
+	@echo "CI checks completed!"
 
 run:
 	uv run python -m src.server

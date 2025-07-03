@@ -1,9 +1,11 @@
-import pytest
 import json
 import os
 import time
 from unittest.mock import patch
-from src.token_store import TokenStore, TokenData
+
+import pytest
+
+from src.token_store import TokenData, TokenStore
 
 
 class TestTokenData:

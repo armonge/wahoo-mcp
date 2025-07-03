@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Test script to validate Wahoo API credentials"""
 
+import asyncio
 import os
 import sys
-import httpx
-import asyncio
 import time
+
+import httpx
 from dotenv import load_dotenv
-from src.token_store import TokenStore, TokenData
+
 from src.server import WahooAPIClient, WahooConfig
+from src.token_store import TokenData, TokenStore
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +37,8 @@ async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> 
         "refresh_token": token_data.refresh_token,
     }
 
-    # Check if we should use client_secret (confidential client) or code_verifier (public client)
+    # Check if we should use client_secret (confidential client) or
+    # code_verifier (public client)
     client_secret = os.getenv("WAHOO_CLIENT_SECRET")
     if client_secret:
         # Confidential client: use client_secret
@@ -115,7 +118,8 @@ async def test_refresh_token(token_data: TokenData, token_store: TokenStore) -> 
                         print("\n   💡 Possible solutions:")
                         print("   1. Ensure WAHOO_CLIENT_ID is correct")
                         print(
-                            "   2. Your app might require a client_secret (set WAHOO_CLIENT_SECRET)"
+                            "   2. Your app might require a client_secret "
+                            "(set WAHOO_CLIENT_SECRET)"
                         )
                         print(
                             "   3. The refresh token or code_verifier might be invalid"
@@ -141,7 +145,8 @@ async def test_wahoo_credentials():
     if not token_file:
         print("❌ Error: WAHOO_TOKEN_FILE environment variable is required")
         print(
-            "Set it to the path where tokens should be stored (e.g., export WAHOO_TOKEN_FILE=token.json)"
+            "Set it to the path where tokens should be stored "
+            "(e.g., export WAHOO_TOKEN_FILE=token.json)"
         )
         return False
 
