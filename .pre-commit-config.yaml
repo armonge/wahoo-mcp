@@ -18,4 +18,3 @@ repos:
     rev: v3.0.0
     hooks:
       - id: complexipy
-        args: ["--ignore-complexity"]

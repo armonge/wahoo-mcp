@@ -104,6 +104,129 @@ if not token_file:
 token_store = TokenStore(token_file)
 
 
+def _handle_oauth_error(error: str, error_desc: str | None) -> web.Response:
+    """Handle OAuth error responses."""
+    logger.error(f"OAuth error: {error}")
+    description = error_desc or "Unknown error"
+    return web.Response(
+        text=f"OAuth Error: {error} - {description}",
+        status=HTTPStatus.BAD_REQUEST,
+    )
+
+
+def _handle_missing_code() -> web.Response:
+    """Handle missing authorization code."""
+    logger.error("No authorization code received in callback")
+    return web.Response(
+        text="Error: No authorization code received",
+        status=HTTPStatus.BAD_REQUEST,
+    )
+
+
+async def _exchange_code_for_token(code: str) -> dict | None:
+    """Exchange authorization code for access token."""
+    logger.info("Exchanging authorization code for access token...")
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            TOKEN_URL,
+            data={
+                "client_id": CLIENT_ID,
+                "client_secret": CLIENT_SECRET,
+                "code": code,
+                "redirect_uri": REDIRECT_URI,
+                "grant_type": "authorization_code",
+                "code_verifier": code_verifier,
+            },
+        )
+
+        if response.status_code == HTTPStatus.OK:
+            return response.json()
+        else:
+            logger.error(f"Token exchange failed with status {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            return None
+
+
+def _store_tokens(token_data: dict) -> tuple[str, str | None]:
+    """Store tokens and return access_token and refresh_token."""
+    access_token = token_data["access_token"]
+    refresh_token = token_data.get("refresh_token")
+
+    token_obj = TokenData(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        code_verifier=code_verifier,
+    )
+    if "expires_in" in token_data:
+        token_obj.expires_at = time.time() + token_data["expires_in"]
+    token_store.save(token_obj)
+
+    return access_token, refresh_token
+
+
+def _log_token_details(token_data: dict, refresh_token: str | None) -> None:
+    """Log token details without exposing sensitive information."""
+    logger.info("Successfully obtained access token")
+    logger.info(f"Token type: {token_data.get('token_type', 'bearer')}")
+    if "expires_in" in token_data:
+        logger.info(f"Token expires in: {token_data['expires_in']} seconds")
+    if "scope" in token_data:
+        logger.info(f"Token scope: {token_data['scope']}")
+    if refresh_token:
+        logger.info("Refresh token obtained")
+
+
+def _create_success_response(
+    access_token: str, refresh_token: str | None
+) -> web.Response:
+    """Create HTML success response with token details."""
+    refresh_display = ""
+    if refresh_token:
+        refresh_display = f"""
+        <details style="margin-top: 10px;">
+        <summary style="cursor: pointer;">Refresh Token (click to show)
+        </summary>
+        <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+        overflow-x: auto;">{refresh_token}</pre>
+        </details>
+        """
+
+    return web.Response(
+        text=f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 40px;">
+        <h1 style="color: #2e7d32;">✅ Authentication Successful!</h1>
+        <p>Your tokens have been obtained.</p>
+        <p>You can close this window and return to the terminal.</p>
+        <details style="margin-top: 20px;">
+        <summary style="cursor: pointer;">Access Token (click to show)
+        </summary>
+        <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+        overflow-x: auto;">{access_token}</pre>
+        </details>
+        {refresh_display}
+        <details style="margin-top: 10px;">
+        <summary style="cursor: pointer;">Code Verifier (click to show)
+        </summary>
+        <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
+        overflow-x: auto;">{code_verifier}</pre>
+        </details>
+        </body>
+        </html>
+    """,
+        content_type="text/html",
+    )
+
+
+def _create_token_error_response(status_code: int, response_text: str) -> web.Response:
+    """Create error response for token exchange failures."""
+    return web.Response(
+        text=f"Error exchanging code for token: {status_code} - {response_text}",
+        status=HTTPStatus.INTERNAL_SERVER_ERROR,
+    )
+
+
 async def callback_handler(request):
     global access_token, refresh_token  # noqa: PLW0603
     logger.info(f"Received callback request from {request.remote}")
@@ -112,117 +235,28 @@ async def callback_handler(request):
     error = request.query.get("error")
 
     if error:
-        logger.error(f"OAuth error: {error}")
-        error_desc = request.query.get("error_description", "Unknown error")
-        return web.Response(
-            text=f"OAuth Error: {error} - {error_desc}",
-            status=HTTPStatus.BAD_REQUEST,
-        )
+        error_desc = request.query.get("error_description")
+        return _handle_oauth_error(error, error_desc)
 
     if not code:
-        logger.error("No authorization code received in callback")
-        return web.Response(
-            text="Error: No authorization code received",
-            status=HTTPStatus.BAD_REQUEST,
-        )
+        return _handle_missing_code()
 
     logger.info(f"Received authorization code: {code[:10]}...")
 
-    # Exchange code for token
-    logger.info("Exchanging authorization code for access token...")
+    try:
+        token_data = await _exchange_code_for_token(code)
+        if not token_data:
+            return _create_token_error_response(500, "Token exchange failed")
 
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                TOKEN_URL,
-                data={
-                    "client_id": CLIENT_ID,
-                    "client_secret": CLIENT_SECRET,
-                    "code": code,
-                    "redirect_uri": REDIRECT_URI,
-                    "grant_type": "authorization_code",
-                    "code_verifier": code_verifier,
-                },
-            )
+        access_token, refresh_token = _store_tokens(token_data)
+        _log_token_details(token_data, refresh_token)
+        return _create_success_response(access_token, refresh_token)
 
-            if response.status_code == HTTPStatus.OK:
-                token_data = response.json()
-                access_token = token_data["access_token"]
-                refresh_token = token_data.get("refresh_token")
-                logger.info("Successfully obtained access token")
-
-                # Store tokens
-                token_obj = TokenData(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    code_verifier=code_verifier,
-                )
-                if "expires_in" in token_data:
-                    token_obj.expires_at = time.time() + token_data["expires_in"]
-                token_store.save(token_obj)
-
-                # Log token details (without exposing the full token)
-                logger.info(f"Token type: {token_data.get('token_type', 'bearer')}")
-                if "expires_in" in token_data:
-                    logger.info(f"Token expires in: {token_data['expires_in']} seconds")
-                if "scope" in token_data:
-                    logger.info(f"Token scope: {token_data['scope']}")
-                if refresh_token:
-                    logger.info("Refresh token obtained")
-
-                refresh_display = ""
-                if refresh_token:
-                    refresh_display = f"""
-                    <details style="margin-top: 10px;">
-                    <summary style="cursor: pointer;">Refresh Token (click to show)
-                    </summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
-                    overflow-x: auto;">{refresh_token}</pre>
-                    </details>
-                    """
-
-                return web.Response(
-                    text=f"""
-                    <html>
-                    <body style="font-family: Arial, sans-serif; padding: 40px;">
-                    <h1 style="color: #2e7d32;">✅ Authentication Successful!</h1>
-                    <p>Your tokens have been obtained.</p>
-                    <p>You can close this window and return to the terminal.</p>
-                    <details style="margin-top: 20px;">
-                    <summary style="cursor: pointer;">Access Token (click to show)
-                    </summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
-                    overflow-x: auto;">{access_token}</pre>
-                    </details>
-                    {refresh_display}
-                    <details style="margin-top: 10px;">
-                    <summary style="cursor: pointer;">Code Verifier (click to show)
-                    </summary>
-                    <pre style="background: #f5f5f5; padding: 10px; margin-top: 10px;
-                    overflow-x: auto;">{code_verifier}</pre>
-                    </details>
-                    </body>
-                    </html>
-                """,
-                    content_type="text/html",
-                )
-            else:
-                logger.error(
-                    f"Token exchange failed with status {response.status_code}"
-                )
-                logger.error(f"Response: {response.text}")
-                return web.Response(
-                    text=(
-                        f"Error exchanging code for token: {response.status_code} - "
-                        f"{response.text}"
-                    ),
-                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-        except Exception as e:
-            logger.exception("Error during token exchange")
-            return web.Response(
-                text=f"Error: {str(e)}", status=HTTPStatus.INTERNAL_SERVER_ERROR
-            )
+    except Exception as e:
+        logger.exception("Error during token exchange")
+        return web.Response(
+            text=f"Error: {str(e)}", status=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
 
 
 async def start_server():
