@@ -13,12 +13,14 @@ import secrets
 import sys
 import time
 import webbrowser
+from http import HTTPStatus
 from urllib.parse import urlencode
 
+import httpx
 from aiohttp import web
 from dotenv import load_dotenv
 
-from token_store import TokenData, TokenStore
+from .token_store import TokenData, TokenStore
 
 # Load environment variables
 load_dotenv()
@@ -58,10 +60,10 @@ if not CLIENT_SECRET:
     CLIENT_SECRET = input("Enter your Wahoo Client Secret: ")
 
 # Build redirect URI with potentially different host
-if REDIRECT_PORT == 443 and REDIRECT_SCHEME == "https":
+if REDIRECT_PORT == 443 and REDIRECT_SCHEME == "https":  # noqa: PLR2004
     # Don't include port 443 for https
     REDIRECT_URI = f"{REDIRECT_SCHEME}://{REDIRECT_HOST}/callback"
-elif REDIRECT_PORT == 80 and REDIRECT_SCHEME == "http":
+elif REDIRECT_PORT == 80 and REDIRECT_SCHEME == "http":  # noqa: PLR2004
     # Don't include port 80 for http
     REDIRECT_URI = f"{REDIRECT_SCHEME}://{REDIRECT_HOST}/callback"
 else:
@@ -103,7 +105,7 @@ token_store = TokenStore(token_file)
 
 
 async def callback_handler(request):
-    global access_token, refresh_token
+    global access_token, refresh_token  # noqa: PLW0603
     logger.info(f"Received callback request from {request.remote}")
 
     code = request.query.get("code")
@@ -112,17 +114,22 @@ async def callback_handler(request):
     if error:
         logger.error(f"OAuth error: {error}")
         error_desc = request.query.get("error_description", "Unknown error")
-        return web.Response(text=f"OAuth Error: {error} - {error_desc}", status=400)
+        return web.Response(
+            text=f"OAuth Error: {error} - {error_desc}",
+            status=HTTPStatus.BAD_REQUEST,
+        )
 
     if not code:
         logger.error("No authorization code received in callback")
-        return web.Response(text="Error: No authorization code received", status=400)
+        return web.Response(
+            text="Error: No authorization code received",
+            status=HTTPStatus.BAD_REQUEST,
+        )
 
     logger.info(f"Received authorization code: {code[:10]}...")
 
     # Exchange code for token
     logger.info("Exchanging authorization code for access token...")
-    import httpx
 
     async with httpx.AsyncClient() as client:
         try:
@@ -138,7 +145,7 @@ async def callback_handler(request):
                 },
             )
 
-            if response.status_code == 200:
+            if response.status_code == HTTPStatus.OK:
                 token_data = response.json()
                 access_token = token_data["access_token"]
                 refresh_token = token_data.get("refresh_token")
@@ -209,11 +216,13 @@ async def callback_handler(request):
                         f"Error exchanging code for token: {response.status_code} - "
                         f"{response.text}"
                     ),
-                    status=500,
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
                 )
         except Exception as e:
             logger.exception("Error during token exchange")
-            return web.Response(text=f"Error: {str(e)}", status=500)
+            return web.Response(
+                text=f"Error: {str(e)}", status=HTTPStatus.INTERNAL_SERVER_ERROR
+            )
 
 
 async def start_server():
@@ -253,7 +262,10 @@ async def start_server():
         "client_id": CLIENT_ID,
         "redirect_uri": REDIRECT_URI,
         "response_type": "code",
-        "scope": "user_read workouts_read routes_read plans_read power_zones_read",
+        "scope": (
+            "user_read workouts_read routes_read plans_read "
+            "plans_write power_zones_read"
+        ),
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }

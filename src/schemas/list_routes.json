@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "external_id": {
+      "type": "string",
+      "description": "Filter routes by external ID"
+    }
+  }
+}

@@ -4,10 +4,59 @@ Pydantic models for Wahoo API data structures
 """
 
 import json
+from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, TypedDict
 
 from pydantic import BaseModel, Field
+
+
+class WahooTarget(TypedDict):
+    """TypedDict for Wahoo plan target format."""
+
+    type: str
+    low: float
+    high: float
+
+
+class WahooIntervalRequired(TypedDict):
+    """Required fields for Wahoo plan interval format."""
+
+    targets: list[WahooTarget]
+    exit_trigger_type: str
+    exit_trigger_value: int
+    intensity_type: str
+
+
+class WahooInterval(WahooIntervalRequired, total=False):
+    """TypedDict for Wahoo plan interval format with optional fields."""
+
+    name: str  # Optional field
+
+
+class WahooHeaderRequired(TypedDict):
+    """Required fields for Wahoo plan header format."""
+
+    name: str
+    description: str
+    version: str
+    workout_type_family: int
+    workout_type_location: int
+    ftp: int
+
+
+class WahooHeader(WahooHeaderRequired, total=False):
+    """TypedDict for Wahoo plan header format with optional fields."""
+
+    author: str  # Optional field
+    estimated_tss: float  # Optional field
+
+
+class WahooPlan(TypedDict):
+    """TypedDict for complete Wahoo plan format."""
+
+    header: WahooHeader
+    intervals: list[WahooInterval]
 
 
 class WorkoutTypeLocation(Enum):
@@ -472,6 +521,220 @@ Full JSON:
         return details
 
 
+class WorkoutTarget(BaseModel):
+    """Workout target specification"""
+
+    target_type: str = Field(
+        description=(
+            "Type of target: power, heart_rate, speed, pace, rpe, cadence, "
+            "ftp, watts, hr, rpm (mapped to Wahoo API types)"
+        )
+    )
+    target_value: float | None = Field(None, description="Target value")
+    target_min: float | None = Field(
+        None, description="Minimum target value for ranges"
+    )
+    target_max: float | None = Field(
+        None, description="Maximum target value for ranges"
+    )
+    unit: str | None = Field(None, description="Unit of measurement")
+
+
+class WorkoutInterval(BaseModel):
+    """Individual workout interval"""
+
+    duration: int = Field(description="Duration in seconds")
+    targets: list[WorkoutTarget] = Field(
+        description="List of targets for this interval"
+    )
+    name: str | None = Field(None, description="Name/description of the interval")
+    interval_type: str = Field(
+        default="work",
+        description=(
+            "Type of interval: work, rest, warmup, cooldown, tempo, threshold, "
+            "recovery, active, or Wahoo intensity types (wu, cd, lt, map, ac, nm, ftp, "
+            "recover)"
+        ),
+    )
+
+
+class WorkoutPlan(BaseModel):
+    """Complete workout plan structure"""
+
+    name: str = Field(description="Name of the workout plan")
+    description: str | None = Field(None, description="Description of the workout")
+    intervals: list[WorkoutInterval] = Field(description="List of workout intervals")
+    workout_type: str = Field(
+        default="bike", description="Type of workout: bike, run, swim"
+    )
+    estimated_duration: int | None = Field(
+        None, description="Estimated total duration in seconds"
+    )
+    estimated_tss: float | None = Field(
+        None, description="Estimated Training Stress Score"
+    )
+    author: str | None = Field(None, description="Author of the plan")
+
+    def _map_intensity_type(self, interval_type: str) -> str:
+        """Map generic interval types to Wahoo-specific intensity types."""
+        # Wahoo API expects:
+        # ["active","wu","tempo","lt","map","ac","nm","ftp","cd","recover","rest"]
+        intensity_mapping = {
+            "warmup": "wu",
+            "warm-up": "wu",
+            "wu": "wu",
+            "work": "active",
+            "active": "active",
+            "interval": "active",
+            "tempo": "tempo",
+            "threshold": "lt",
+            "lt": "lt",
+            "map": "map",
+            "ac": "ac",
+            "neuromuscular": "nm",
+            "nm": "nm",
+            "ftp": "ftp",
+            "cooldown": "cd",
+            "cool-down": "cd",
+            "cd": "cd",
+            "recovery": "recover",
+            "recover": "recover",
+            "rest": "rest",
+        }
+
+        # Convert to lowercase for case-insensitive matching
+        interval_type_lower = interval_type.lower()
+        return intensity_mapping.get(
+            interval_type_lower, "active"
+        )  # Default to "active"
+
+    def _map_target_type(self, target_type: str) -> str:
+        """Map generic target types to Wahoo-specific target types."""
+        # Wahoo API expects:
+        # ["rpm","rpe","watts","hr","speed","ftp","map","ac",
+        # "nm","threshold_hr","threshold_speed","max_hr"]
+        target_mapping = {
+            "power": "watts",
+            "watts": "watts",
+            "heart_rate": "hr",
+            "hr": "hr",
+            "heartrate": "hr",
+            "cadence": "rpm",
+            "rpm": "rpm",
+            "rpe": "rpe",
+            "perceived_exertion": "rpe",
+            "speed": "speed",
+            "pace": "speed",
+            "ftp": "ftp",
+            "map": "map",
+            "ac": "ac",
+            "nm": "nm",
+            "neuromuscular": "nm",
+            "threshold_hr": "threshold_hr",
+            "threshold_speed": "threshold_speed",
+            "max_hr": "max_hr",
+        }
+
+        # Convert to lowercase for case-insensitive matching
+        target_type_lower = target_type.lower()
+        return target_mapping.get(target_type_lower, "watts")  # Default to "watts"
+
+    def to_wahoo_format(self) -> WahooPlan:
+        """Convert to Wahoo plan JSON format"""
+
+        # Calculate total duration if not provided
+        total_duration = self.estimated_duration
+        if total_duration is None:
+            total_duration = sum(interval.duration for interval in self.intervals)
+
+        # Convert intervals to Wahoo format
+        wahoo_intervals: list[WahooInterval] = []
+        for interval in self.intervals:
+            wahoo_interval: WahooInterval = {
+                "targets": [],
+                "exit_trigger_type": "time",
+                "exit_trigger_value": interval.duration,
+                "intensity_type": self._map_intensity_type(interval.interval_type),
+            }
+
+            # Add interval name/description if provided
+            if interval.name:
+                wahoo_interval["name"] = interval.name
+
+            # Convert targets to Wahoo format
+            for target in interval.targets:
+                # Map target types to Wahoo-specific types
+                wahoo_target_type = self._map_target_type(target.target_type)
+
+                # Add target values based on whether it's a range or single value
+                if target.target_min is not None and target.target_max is not None:
+                    wahoo_target: WahooTarget = {
+                        "type": wahoo_target_type,
+                        "low": target.target_min,
+                        "high": target.target_max,
+                    }
+                elif target.target_value is not None:
+                    # Use value as both low and high for single values
+                    wahoo_target: WahooTarget = {
+                        "type": wahoo_target_type,
+                        "low": target.target_value,
+                        "high": target.target_value,
+                    }
+                else:
+                    # Skip targets without valid values
+                    continue
+
+                wahoo_interval["targets"].append(wahoo_target)
+
+            wahoo_intervals.append(wahoo_interval)
+
+        # Build the complete Wahoo plan JSON structure
+        header: WahooHeader = {
+            "name": self.name,
+            "description": self.description or "",
+            "version": "1.0.0",
+            "workout_type_family": 0,  # 0 = cycling, 1 = running
+            "workout_type_location": 0,  # 0 = indoor, 1 = outdoor
+            "ftp": 250,  # Default FTP value for target calculations
+        }
+
+        # Skip optional fields that cause Wahoo API validation errors:
+        # - author: causes "field 'author' is not an allowed field" error
+        # - estimated_tss: causes "field 'estimated_tss' is not an allowed field" error
+
+        wahoo_plan: WahooPlan = {
+            "header": header,
+            "intervals": wahoo_intervals,
+        }
+
+        return wahoo_plan
+
+
+class CreatePlanRequest(BaseModel):
+    """Request model for creating a new plan"""
+
+    plan: WorkoutPlan = Field(description="Complete workout plan structure")
+    filename: str | None = Field(None, description="Name of the plan file")
+    external_id: str = Field(description="Unique external ID for the plan")
+    provider_updated_at: str = Field(
+        description="External date/time the file was updated"
+    )
+
+
+class CreatePlanResponse(BaseModel):
+    """Response model for plan creation"""
+
+    id: int = Field(description="Unique plan identifier")
+    user_id: int = Field(description="User ID who owns the plan")
+    name: str = Field(description="Plan name")
+    description: str | None = Field(None, description="Plan description")
+    file: PlanFile = Field(description="Plan file information")
+    external_id: str = Field(description="External plan ID")
+    provider_updated_at: str = Field(description="Provider update timestamp")
+    created_at: str = Field(description="Creation timestamp")
+    updated_at: str = Field(description="Last update timestamp")
+
+
 class PowerZone(BaseModel):
     """Wahoo power zone model matching the Cloud API schema"""
 
@@ -563,18 +826,16 @@ class Workout(BaseModel):
 
     def duration_str(self) -> str:
         """Format duration as a readable string"""
-        if self.minutes < 60:
+        if self.minutes < 60:  # noqa: PLR2004
             return f"{self.minutes} minutes"
-        hours = self.minutes // 60
-        remaining_minutes = self.minutes % 60
+        hours = self.minutes // 60  # noqa: PLR2004
+        remaining_minutes = self.minutes % 60  # noqa: PLR2004
         if remaining_minutes == 0:
             return f"{hours} hour{'s' if hours != 1 else ''}"
         return f"{hours}h {remaining_minutes}m"
 
     def formatted_start_time(self) -> str:
         """Format start time for display"""
-        from datetime import datetime
-
         try:
             dt = datetime.fromisoformat(self.starts.replace("Z", "+00:00"))
             return dt.strftime("%Y-%m-%d %H:%M:%S UTC")

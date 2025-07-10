@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "route_id": {
+      "type": "integer",
+      "description": "The ID of the route to retrieve"
+    }
+  },
+  "required": [
+    "route_id"
+  ]
+}

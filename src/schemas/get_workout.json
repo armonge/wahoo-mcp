@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "workout_id": {
+      "type": "integer",
+      "description": "The ID of the workout to retrieve"
+    }
+  },
+  "required": [
+    "workout_id"
+  ]
+}

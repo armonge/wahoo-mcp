@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "power_zone_id": {
+      "type": "integer",
+      "description": "The ID of the power zone to retrieve"
+    }
+  },
+  "required": [
+    "power_zone_id"
+  ]
+}
