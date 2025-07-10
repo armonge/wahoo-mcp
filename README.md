@@ -11,7 +11,7 @@ A Model Context Protocol (MCP) server for interacting with the Wahoo Cloud API, 
 
 - **Workouts**: List workouts with pagination and date filtering, get detailed workout information
 - **Routes**: List and retrieve saved cycling/running routes
-- **Training Plans**: Access training plans from your Wahoo account
+- **Training Plans**: Access and create training plans in your Wahoo account
 - **Power Zones**: View power zone configurations for different workout types
 - **OAuth 2.0 Authentication**: Secure authentication with automatic token refresh
 - **Comprehensive workout type support**: 72 different workout types with location and family categorization
@@ -266,6 +266,31 @@ Example:
 Use the get_power_zone tool to get details for power zone ID 321
 ```
 
+#### create_plan
+Create a new training plan in your Wahoo account.
+
+Parameters:
+- `plan` (required): Complete workout plan structure containing:
+  - `name` (required): Name of the workout plan
+  - `description` (optional): Description of the workout
+  - `intervals` (required): List of workout intervals, each containing:
+    - `duration` (required): Duration in seconds
+    - `targets` (required): List of targets (power, heart_rate, speed, pace, rpe, cadence)
+    - `name` (optional): Name/description of the interval
+    - `interval_type` (optional): Type (work, rest, warmup, cooldown, tempo, threshold, recovery, active, or Wahoo types: wu, cd, lt, map, ac, nm, ftp, recover)
+  - `workout_type` (optional): Type of workout (bike, run, swim) - defaults to "bike"
+  - `estimated_duration` (optional): Estimated total duration in seconds
+  - `estimated_tss` (optional): Estimated Training Stress Score
+  - `author` (optional): Author of the plan
+- `external_id` (required): Unique external ID for the plan
+- `provider_updated_at` (required): External date/time the file was updated (ISO 8601 format)
+- `filename` (optional): Name of the plan file
+
+Example:
+```
+Use the create_plan tool to create a new training plan with intervals for power and heart rate zones
+```
+
 ## Development
 
 ### Running Tests
@@ -312,6 +337,7 @@ The server implements the following Wahoo Cloud API endpoints:
 **Training Plans:**
 - `GET /v1/plans` - List training plans
 - `GET /v1/plans/{id}` - Get plan details
+- `POST /v1/plans` - Create a new training plan
 
 **Power Zones:**
 - `GET /v1/power_zones` - List power zone configurations

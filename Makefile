@@ -10,7 +10,7 @@ test:
 	uv run pytest -v
 
 test-cov:
-	uv run pytest -v --cov=src --cov-report=xml --cov-report=term
+	uv run pytest -vvv --cov=src --cov-report=xml --cov-report=term --junitxml=junit.xml -o junit_family=legacy
 
 lint:
 	uv run ruff check .
