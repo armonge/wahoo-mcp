@@ -906,6 +906,7 @@ dev = [
     { name = "complexipy" },
     { name = "pre-commit" },
     { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
     { name = "pytest-httpx" },
     { name = "pytest-watcher" },
 ]
@@ -929,6 +930,7 @@ dev = [
     { name = "complexipy", specifier = ">=3.2.0" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
+    { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "pytest-httpx", specifier = ">=0.35.0" },
     { name = "pytest-watcher", specifier = ">=0.4.3" },
 ]
