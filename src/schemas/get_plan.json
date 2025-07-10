@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "plan_id": {
+      "type": "integer",
+      "description": "The ID of the plan to retrieve"
+    }
+  },
+  "required": [
+    "plan_id"
+  ]
+}

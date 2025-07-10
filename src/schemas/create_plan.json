@@ -1,0 +1,101 @@
+{
+  "type": "object",
+  "properties": {
+    "plan": {
+      "type": "object",
+      "description": "Complete workout plan structure",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the workout plan"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of the workout"
+        },
+        "intervals": {
+          "type": "array",
+          "description": "List of workout intervals",
+          "items": {
+            "type": "object",
+            "properties": {
+              "duration": {
+                "type": "integer",
+                "description": "Duration in seconds"
+              },
+              "targets": {
+                "type": "array",
+                "description": "List of targets for this interval",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "target_type": {
+                      "type": "string",
+                      "description": "Type of target: power, heart_rate, speed, pace, rpe, cadence, ftp, watts, hr, rpm"
+                    },
+                    "target_value": {
+                      "type": "number",
+                      "description": "Target value"
+                    },
+                    "target_min": {
+                      "type": "number",
+                      "description": "Minimum target value for ranges"
+                    },
+                    "target_max": {
+                      "type": "number",
+                      "description": "Maximum target value for ranges"
+                    },
+                    "unit": {
+                      "type": "string",
+                      "description": "Unit of measurement"
+                    }
+                  },
+                  "required": [
+                    "target_type"
+                  ]
+                }
+              },
+              "name": {
+                "type": "string",
+                "description": "Name/description of the interval"
+              },
+              "interval_type": {
+                "type": "string",
+                "description": "Type of interval: work, rest, warmup, cooldown, tempo, threshold, recovery, active, or any Wahoo intensity type (wu, cd, lt, map, ac, nm, ftp, recover)"
+              }
+            },
+            "required": [
+              "duration",
+              "targets"
+            ]
+          }
+        },
+        "workout_type": {
+          "type": "string",
+          "description": "Type of workout: bike, run, swim"
+        }
+      },
+      "required": [
+        "name",
+        "intervals"
+      ]
+    },
+    "filename": {
+      "type": "string",
+      "description": "Name of the plan file"
+    },
+    "external_id": {
+      "type": "string",
+      "description": "Unique external ID for the plan"
+    },
+    "provider_updated_at": {
+      "type": "string",
+      "description": "External date/time the file was updated (ISO 8601 format)"
+    }
+  },
+  "required": [
+    "plan",
+    "external_id",
+    "provider_updated_at"
+  ]
+}

@@ -13,3 +13,8 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+
+  - repo: https://github.com/rohaquinlop/complexipy-pre-commit
+    rev: v3.0.0
+    hooks:
+      - id: complexipy

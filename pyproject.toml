@@ -32,7 +32,13 @@ testpaths = ["tests"]
 packages = ["src"]
 
 [dependency-groups]
-dev = ["pre-commit>=4.2.0"]
+dev = [
+  "complexipy>=3.2.0",
+  "pre-commit>=4.2.0",
+  "pytest-asyncio>=1.0.0",
+  "pytest-httpx>=0.35.0",
+  "pytest-watcher>=0.4.3",
+]
 
 [tool.ruff]
 target-version = "py313"
@@ -47,15 +53,17 @@ select = [
   "B",  # flake8-bugbear
   "S",  # flake8-bandit (security)
   "UP", # pyupgrade
+  "PL", # pylint
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = [
-  "S101", # assert-used (allow assert in tests)
-  "S105", # hardcoded-password-string (allow in test fixtures)
-  "S106", # hardcoded-password-func-arg (allow in test fixtures)
-  "S108", # hardcoded-temp-file (allow in tests)
-  "S110", # try-except-pass (allow in test cleanup)
+  "S101",    # assert-used (allow assert in tests)
+  "S105",    # hardcoded-password-string (allow in test fixtures)
+  "S106",    # hardcoded-password-func-arg (allow in test fixtures)
+  "S108",    # hardcoded-temp-file (allow in tests)
+  "S110",    # try-except-pass (allow in test cleanup)
+  "PLR2004", # Magic value used in comparison, consider replacing {value} with a constant variable
 ]
 "test_auth.py" = [
   "S110", # try-except-pass (allow in auth error handling)

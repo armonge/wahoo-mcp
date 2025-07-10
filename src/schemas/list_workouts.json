@@ -1,0 +1,23 @@
+{
+  "type": "object",
+  "properties": {
+    "page": {
+      "type": "integer",
+      "description": "Page number (default: 1)",
+      "default": 1
+    },
+    "per_page": {
+      "type": "integer",
+      "description": "Number of items per page (default: 30)",
+      "default": 30
+    },
+    "start_date": {
+      "type": "string",
+      "description": "Filter workouts created after this date (ISO 8601 format)"
+    },
+    "end_date": {
+      "type": "string",
+      "description": "Filter workouts created before this date (ISO 8601 format)"
+    }
+  }
+}

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+import base64
+import json
 import logging
 import os
+from http import HTTPStatus
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -10,8 +14,22 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 from pydantic import BaseModel, Field
 
-from .models import Plan, PowerZone, Route, Workout
+from .models import (
+    CreatePlanRequest,
+    CreatePlanResponse,
+    Plan,
+    PowerZone,
+    Route,
+    Workout,
+    WorkoutInterval,
+    WorkoutPlan,
+    WorkoutTarget,
+)
 from .token_store import TokenStore
+
+# Type aliases for cleaner function signatures
+ToolResponse = list[TextContent]
+Arguments = dict[str, Any]
 
 # Load environment variables
 load_dotenv()
@@ -93,7 +111,7 @@ class WahooAPIClient:
                     data=data,
                 )
 
-                if response.status_code == 200:
+                if response.status_code == HTTPStatus.OK:
                     token_response = response.json()
                     self.token_data = self.token_store.update_from_response(
                         token_response
@@ -148,8 +166,8 @@ class WahooAPIClient:
         response = await self.client.get("/v1/workouts", params=params)
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get("/v1/workouts", params=params)
             else:
@@ -184,8 +202,8 @@ class WahooAPIClient:
         response = await self.client.get(f"/v1/workouts/{workout_id}")
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get(f"/v1/workouts/{workout_id}")
             else:
@@ -214,8 +232,8 @@ class WahooAPIClient:
         response = await self.client.get("/v1/routes", params=params)
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get("/v1/routes", params=params)
             else:
@@ -256,8 +274,8 @@ class WahooAPIClient:
         response = await self.client.get(f"/v1/routes/{route_id}")
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get(f"/v1/routes/{route_id}")
             else:
@@ -286,8 +304,8 @@ class WahooAPIClient:
         response = await self.client.get("/v1/plans", params=params)
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get("/v1/plans", params=params)
             else:
@@ -328,8 +346,8 @@ class WahooAPIClient:
         response = await self.client.get(f"/v1/plans/{plan_id}")
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get(f"/v1/plans/{plan_id}")
             else:
@@ -348,14 +366,72 @@ class WahooAPIClient:
             logger.error(f"Failed to parse plan {plan_id}: {e}")
             raise ValueError(f"Invalid plan data received from API: {e}") from e
 
+    async def create_plan(self, plan_request: CreatePlanRequest) -> CreatePlanResponse:
+        """Create a new plan in the user's library"""
+        await self._ensure_valid_token()
+
+        # Convert structured plan data to Wahoo plan JSON format
+        plan_json = plan_request.plan.to_wahoo_format()
+
+        # Encode as base64
+        plan_json_str = json.dumps(plan_json, separators=(",", ":"))
+        plan_base64 = base64.b64encode(plan_json_str.encode("utf-8")).decode("utf-8")
+
+        # Prepare form data for the API call
+        form_data = {
+            "plan[file]": f"data:application/json;base64,{plan_base64}",
+            "plan[external_id]": plan_request.external_id,
+            "plan[provider_updated_at]": plan_request.provider_updated_at,
+        }
+
+        if plan_request.filename:
+            form_data["plan[filename]"] = plan_request.filename
+
+        response = await self.client.post(
+            "/v1/plans",
+            data=form_data,
+            headers={
+                "Authorization": f"Bearer {self.token_data.access_token}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+        )
+
+        # Handle 401 by refreshing token and retrying once
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
+            if await self._refresh_access_token():
+                response = await self.client.post(
+                    "/v1/plans",
+                    data=form_data,
+                    headers={
+                        "Authorization": f"Bearer {self.token_data.access_token}",
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                )
+            else:
+                raise httpx.HTTPStatusError(
+                    "Authentication failed and token refresh was unsuccessful",
+                    request=response.request,
+                    response=response,
+                )
+
+        response.raise_for_status()
+        plan_dict = response.json()
+
+        try:
+            return CreatePlanResponse(**plan_dict)
+        except Exception as e:
+            logger.error(f"Failed to parse created plan: {e}")
+            raise ValueError(f"Invalid plan data received from API: {e}") from e
+
     async def list_power_zones(self) -> list[PowerZone]:
         await self._ensure_valid_token()
 
         response = await self.client.get("/v1/power_zones")
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get("/v1/power_zones")
             else:
@@ -397,8 +473,8 @@ class WahooAPIClient:
         response = await self.client.get(f"/v1/power_zones/{power_zone_id}")
 
         # Handle 401 by refreshing token and retrying once
-        if response.status_code == 401:
-            logger.info("Got 401, attempting to refresh token")
+        if response.status_code == HTTPStatus.UNAUTHORIZED:
+            logger.info("Got 401 Unauthorized, attempting to refresh token")
             if await self._refresh_access_token():
                 response = await self.client.get(f"/v1/power_zones/{power_zone_id}")
             else:
@@ -418,6 +494,11 @@ class WahooAPIClient:
             raise ValueError(f"Invalid power zone data received from API: {e}") from e
 
 
+def load_json_schema(schema: str) -> dict:
+    """Load a JSON schema from a file."""
+    return json.loads((Path("src/schemas") / schema).read_text())
+
+
 app = Server("wahoo-mcp")
 
 
@@ -427,209 +508,245 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="list_workouts",
             description="List workouts from Wahoo Cloud API",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "page": {
-                        "type": "integer",
-                        "description": "Page number (default: 1)",
-                        "default": 1,
-                    },
-                    "per_page": {
-                        "type": "integer",
-                        "description": "Number of items per page (default: 30)",
-                        "default": 30,
-                    },
-                    "start_date": {
-                        "type": "string",
-                        "description": (
-                            "Filter workouts created after this date (ISO 8601 format)"
-                        ),
-                    },
-                    "end_date": {
-                        "type": "string",
-                        "description": (
-                            "Filter workouts created before this date (ISO 8601 format)"
-                        ),
-                    },
-                },
-            },
+            inputSchema=load_json_schema("list_workouts.json"),
         ),
         Tool(
             name="get_workout",
             description="Get detailed information about a specific workout",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workout_id": {
-                        "type": "integer",
-                        "description": "The ID of the workout to retrieve",
-                    }
-                },
-                "required": ["workout_id"],
-            },
+            inputSchema=load_json_schema("get_workout.json"),
         ),
         Tool(
             name="list_routes",
             description="List routes from Wahoo Cloud API",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "external_id": {
-                        "type": "string",
-                        "description": "Filter routes by external ID",
-                    },
-                },
-            },
+            inputSchema=load_json_schema("list_routes.json"),
         ),
         Tool(
             name="get_route",
             description="Get detailed information about a specific route",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "route_id": {
-                        "type": "integer",
-                        "description": "The ID of the route to retrieve",
-                    }
-                },
-                "required": ["route_id"],
-            },
+            inputSchema=load_json_schema("get_route.json"),
         ),
         Tool(
             name="list_plans",
             description="List plans from Wahoo Cloud API",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "external_id": {
-                        "type": "string",
-                        "description": "Filter plans by external ID",
-                    },
-                },
-            },
+            inputSchema=load_json_schema("list_plans.json"),
         ),
         Tool(
             name="get_plan",
             description="Get detailed information about a specific plan",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "plan_id": {
-                        "type": "integer",
-                        "description": "The ID of the plan to retrieve",
-                    }
-                },
-                "required": ["plan_id"],
-            },
+            inputSchema=load_json_schema("get_plan.json"),
+        ),
+        Tool(
+            name="create_plan",
+            description="Create a new plan in the user's library",
+            inputSchema=load_json_schema("create_plan.json"),
         ),
         Tool(
             name="list_power_zones",
             description="List power zones from Wahoo Cloud API",
-            inputSchema={
-                "type": "object",
-                "properties": {},
-            },
+            inputSchema=load_json_schema("list_power_zones.json"),
         ),
         Tool(
             name="get_power_zone",
             description="Get detailed information about a specific power zone",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "power_zone_id": {
-                        "type": "integer",
-                        "description": "The ID of the power zone to retrieve",
-                    }
-                },
-                "required": ["power_zone_id"],
-            },
+            inputSchema=load_json_schema("get_power_zone.json"),
         ),
     ]
 
 
+async def _handle_list_workouts(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle list_workouts tool request."""
+    workouts = await client.list_workouts(
+        page=arguments.get("page", 1),
+        per_page=arguments.get("per_page", 30),
+        start_date=arguments.get("start_date"),
+        end_date=arguments.get("end_date"),
+    )
+
+    if not workouts:
+        return [TextContent(type="text", text="No workouts found.")]
+
+    formatted_workouts = "\n\n".join(workout.format_summary() for workout in workouts)
+    result = f"Found {len(workouts)} workouts:\n\n{formatted_workouts}"
+    return [TextContent(type="text", text=result)]
+
+
+async def _handle_get_workout(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle get_workout tool request."""
+    workout_id = arguments["workout_id"]
+    workout = await client.get_workout(workout_id)
+    return [TextContent(type="text", text=workout.format_details())]
+
+
+async def _handle_list_routes(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle list_routes tool request."""
+    routes = await client.list_routes(external_id=arguments.get("external_id"))
+
+    if not routes:
+        return [TextContent(type="text", text="No routes found.")]
+
+    formatted_routes = "\n\n".join(route.format_summary() for route in routes)
+    result = f"Found {len(routes)} routes:\n\n{formatted_routes}"
+    return [TextContent(type="text", text=result)]
+
+
+async def _handle_get_route(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle get_route tool request."""
+    route_id = arguments["route_id"]
+    route = await client.get_route(route_id)
+    return [TextContent(type="text", text=route.format_details())]
+
+
+async def _handle_list_plans(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle list_plans tool request."""
+    plans = await client.list_plans(external_id=arguments.get("external_id"))
+
+    if not plans:
+        return [TextContent(type="text", text="No plans found.")]
+
+    formatted_plans = "\n\n".join(plan.format_summary() for plan in plans)
+    result = f"Found {len(plans)} plans:\n\n{formatted_plans}"
+    return [TextContent(type="text", text=result)]
+
+
+async def _handle_get_plan(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle get_plan tool request."""
+    plan_id = arguments["plan_id"]
+    plan = await client.get_plan(plan_id)
+    return [TextContent(type="text", text=plan.format_details())]
+
+
+def _build_workout_intervals(intervals_data: list) -> list[WorkoutInterval]:
+    """Build list of WorkoutInterval objects from raw data."""
+    intervals = []
+    for interval_data in intervals_data:
+        targets = [
+            WorkoutTarget(**target_data) for target_data in interval_data["targets"]
+        ]
+
+        interval = WorkoutInterval(
+            duration=interval_data["duration"],
+            targets=targets,
+            name=interval_data.get("name"),
+            interval_type=interval_data.get("interval_type", "work"),
+        )
+        intervals.append(interval)
+    return intervals
+
+
+def _format_plan_result(created_plan) -> str:
+    """Format the plan creation result message."""
+    result = f"""Plan created successfully!
+
+Plan Details:
+- ID: {created_plan.id}
+- Name: {created_plan.name}
+- External ID: {created_plan.external_id}
+- User ID: {created_plan.user_id}
+- Created: {created_plan.created_at}
+- Updated: {created_plan.updated_at}
+- File URL: {created_plan.file.url}"""
+
+    if created_plan.description:
+        result += f"\n- Description: {created_plan.description}"
+
+    return result
+
+
+async def _handle_create_plan(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle create_plan tool request."""
+    plan_data = arguments["plan"]
+
+    # Build intervals from data
+    intervals = _build_workout_intervals(plan_data["intervals"])
+
+    # Create WorkoutPlan with only essential fields to avoid API validation errors
+    plan = WorkoutPlan(
+        name=plan_data["name"],
+        description=plan_data.get("description"),
+        intervals=intervals,
+        workout_type=plan_data.get("workout_type", "bike"),
+        # Skip optional fields that cause Wahoo API validation errors:
+        # - estimated_duration: calculated automatically from intervals
+        # - estimated_tss: not accepted by API
+        # - author: not accepted by API
+    )
+
+    plan_request = CreatePlanRequest(
+        plan=plan,
+        filename=arguments.get("filename"),
+        external_id=arguments["external_id"],
+        provider_updated_at=arguments["provider_updated_at"],
+    )
+    created_plan = await client.create_plan(plan_request)
+
+    result = _format_plan_result(created_plan)
+    return [TextContent(type="text", text=result)]
+
+
+async def _handle_list_power_zones(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle list_power_zones tool request."""
+    power_zones = await client.list_power_zones()
+
+    if not power_zones:
+        return [TextContent(type="text", text="No power zones found.")]
+
+    formatted_zones = "\n\n".join(pz.format_summary() for pz in power_zones)
+    result = f"Found {len(power_zones)} power zones:\n\n{formatted_zones}"
+    return [TextContent(type="text", text=result)]
+
+
+async def _handle_get_power_zone(
+    client: WahooAPIClient, arguments: Arguments
+) -> ToolResponse:
+    """Handle get_power_zone tool request."""
+    power_zone_id = arguments["power_zone_id"]
+    power_zone = await client.get_power_zone(power_zone_id)
+    return [TextContent(type="text", text=power_zone.format_details())]
+
+
+# Tool handler mapping
+TOOL_HANDLERS = {
+    "list_workouts": _handle_list_workouts,
+    "get_workout": _handle_get_workout,
+    "list_routes": _handle_list_routes,
+    "get_route": _handle_get_route,
+    "list_plans": _handle_list_plans,
+    "get_plan": _handle_get_plan,
+    "create_plan": _handle_create_plan,
+    "list_power_zones": _handle_list_power_zones,
+    "get_power_zone": _handle_get_power_zone,
+}
+
+
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> list[TextContent]:
+    """Main tool dispatcher."""
     config = WahooConfig()
+
+    # Check if tool exists
+    if name not in TOOL_HANDLERS:
+        return [TextContent(type="text", text=f"Unknown tool: {name}")]
 
     try:
         async with WahooAPIClient(config) as client:
-            if name == "list_workouts":
-                workouts = await client.list_workouts(
-                    page=arguments.get("page", 1),
-                    per_page=arguments.get("per_page", 30),
-                    start_date=arguments.get("start_date"),
-                    end_date=arguments.get("end_date"),
-                )
-
-                if not workouts:
-                    return [TextContent(type="text", text="No workouts found.")]
-
-                formatted_workouts = "\n\n".join(
-                    workout.format_summary() for workout in workouts
-                )
-                result = f"Found {len(workouts)} workouts:\n\n{formatted_workouts}"
-                return [TextContent(type="text", text=result)]
-
-            elif name == "get_workout":
-                workout_id = arguments["workout_id"]
-                workout = await client.get_workout(workout_id)
-                return [TextContent(type="text", text=workout.format_details())]
-
-            elif name == "list_routes":
-                routes = await client.list_routes(
-                    external_id=arguments.get("external_id")
-                )
-
-                if not routes:
-                    return [TextContent(type="text", text="No routes found.")]
-
-                formatted_routes = "\n\n".join(
-                    route.format_summary() for route in routes
-                )
-                result = f"Found {len(routes)} routes:\n\n{formatted_routes}"
-                return [TextContent(type="text", text=result)]
-
-            elif name == "get_route":
-                route_id = arguments["route_id"]
-                route = await client.get_route(route_id)
-                return [TextContent(type="text", text=route.format_details())]
-
-            elif name == "list_plans":
-                plans = await client.list_plans(
-                    external_id=arguments.get("external_id")
-                )
-
-                if not plans:
-                    return [TextContent(type="text", text="No plans found.")]
-
-                formatted_plans = "\n\n".join(plan.format_summary() for plan in plans)
-                result = f"Found {len(plans)} plans:\n\n{formatted_plans}"
-                return [TextContent(type="text", text=result)]
-
-            elif name == "get_plan":
-                plan_id = arguments["plan_id"]
-                plan = await client.get_plan(plan_id)
-                return [TextContent(type="text", text=plan.format_details())]
-
-            elif name == "list_power_zones":
-                power_zones = await client.list_power_zones()
-
-                if not power_zones:
-                    return [TextContent(type="text", text="No power zones found.")]
-
-                formatted_zones = "\n\n".join(pz.format_summary() for pz in power_zones)
-                result = f"Found {len(power_zones)} power zones:\n\n{formatted_zones}"
-                return [TextContent(type="text", text=result)]
-
-            elif name == "get_power_zone":
-                power_zone_id = arguments["power_zone_id"]
-                power_zone = await client.get_power_zone(power_zone_id)
-                return [TextContent(type="text", text=power_zone.format_details())]
-
-            else:
-                return [TextContent(type="text", text=f"Unknown tool: {name}")]
-
+            handler = TOOL_HANDLERS[name]
+            return await handler(client, arguments)
     except httpx.HTTPStatusError as e:
         return [
             TextContent(

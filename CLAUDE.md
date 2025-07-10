@@ -402,3 +402,8 @@ The `make test-auth` command tests:
 - Token refresh functionality
 
 This ensures that after refactoring (especially type imports/exports), all real API integrations still work correctly.
+
+## Development Memories
+
+### Import Guidelines
+- Always add imports at the top module level
