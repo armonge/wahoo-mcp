@@ -20,7 +20,7 @@ import httpx
 from aiohttp import web
 from dotenv import load_dotenv
 
-from .token_store import TokenData, TokenStore
+from src.token_store import TokenData, TokenStore
 
 # Load environment variables
 load_dotenv()

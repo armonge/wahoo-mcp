@@ -15,10 +15,14 @@ from urllib.parse import urlencode
 
 import pytest
 from aiohttp import web
-from aiohttp.test_utils import AioHTTPTestCase, unittest_run_loop
+from aiohttp.test_utils import AioHTTPTestCase
 
-from src import auth
 from src.token_store import TokenData
+
+# Set environment variables before importing auth module
+os.environ.setdefault("WAHOO_CLIENT_ID", "test_client_id")
+os.environ.setdefault("WAHOO_CLIENT_SECRET", "test_client_secret")
+os.environ.setdefault("WAHOO_TOKEN_FILE", "test_token.json")
 
 
 class TestAuthModule(AioHTTPTestCase):
@@ -27,6 +31,7 @@ class TestAuthModule(AioHTTPTestCase):
     async def get_application(self):
         """Create test application."""
         # Import auth module functions to test
+        from src import auth  # noqa: PLC0415
 
         app = web.Application()
         app.router.add_get("/callback", auth.callback_handler)
@@ -36,11 +41,11 @@ class TestAuthModule(AioHTTPTestCase):
         """Set up test environment."""
         super().setUp()
         # Clear global variables
+        import src.auth  # noqa: PLC0415
 
-        auth.access_token = None
-        auth.refresh_token = None
+        src.auth.access_token = None
+        src.auth.refresh_token = None
 
-    @unittest_run_loop
     async def test_callback_handler_success(self):
         """Test successful OAuth callback handling."""
         with (
@@ -82,7 +87,6 @@ class TestAuthModule(AioHTTPTestCase):
                 # Verify token store was called
                 mock_store.save.assert_called_once()
 
-    @unittest_run_loop
     async def test_callback_handler_oauth_error(self):
         """Test OAuth error handling in callback."""
         response = await self.client.request(
@@ -92,7 +96,6 @@ class TestAuthModule(AioHTTPTestCase):
         self.assertEqual(response.status, HTTPStatus.BAD_REQUEST)
         self.assertIn("OAuth Error", await response.text())
 
-    @unittest_run_loop
     async def test_callback_handler_no_code(self):
         """Test callback without authorization code."""
         response = await self.client.request("GET", "/callback")
@@ -100,7 +103,6 @@ class TestAuthModule(AioHTTPTestCase):
         self.assertEqual(response.status, HTTPStatus.BAD_REQUEST)
         self.assertIn("No authorization code received", await response.text())
 
-    @unittest_run_loop
     async def test_callback_handler_token_exchange_failure(self):
         """Test token exchange failure."""
         with (
@@ -128,7 +130,6 @@ class TestAuthModule(AioHTTPTestCase):
                 self.assertEqual(response.status, HTTPStatus.INTERNAL_SERVER_ERROR)
                 self.assertIn("Error exchanging code", await response.text())
 
-    @unittest_run_loop
     async def test_callback_handler_network_error(self):
         """Test network error during token exchange."""
         with (
@@ -412,39 +413,36 @@ async def test_server_timeout_simulation():
 class TestErrorHandling:
     """Test error handling scenarios."""
 
-    def test_missing_token_file_env(self):
+    def test_missing_token_file_env(self, monkeypatch):
         """Test handling of missing WAHOO_TOKEN_FILE."""
-        with patch.dict(os.environ, {}, clear=True):
-            token_file = os.getenv("WAHOO_TOKEN_FILE")
-            assert token_file is None
+        monkeypatch.delenv("WAHOO_TOKEN_FILE", raising=False)
+        token_file = os.getenv("WAHOO_TOKEN_FILE")
+        assert token_file is None
 
-    def test_client_credentials_prompting(self):
+    def test_client_credentials_prompting(self, monkeypatch):
         """Test client credentials prompting logic."""
-        with patch.dict(os.environ, {}, clear=True):
-            # Simulate the auth module logic
-            client_id = os.getenv("WAHOO_CLIENT_ID")
-            client_secret = os.getenv("WAHOO_CLIENT_SECRET")
+        monkeypatch.delenv("WAHOO_CLIENT_ID", raising=False)
+        monkeypatch.delenv("WAHOO_CLIENT_SECRET", raising=False)
+        # Simulate the auth module logic
+        client_id = os.getenv("WAHOO_CLIENT_ID")
+        client_secret = os.getenv("WAHOO_CLIENT_SECRET")
 
-            assert client_id is None
-            assert client_secret is None
+        assert client_id is None
+        assert client_secret is None
 
-            # In real auth module, these would prompt for input
-            # Here we just verify the environment check works
+        # In real auth module, these would prompt for input
+        # Here we just verify the environment check works
 
-    def test_client_credentials_from_env(self):
+    def test_client_credentials_from_env(self, monkeypatch):
         """Test client credentials from environment."""
-        with patch.dict(
-            os.environ,
-            {
-                "WAHOO_CLIENT_ID": "test_client_id",
-                "WAHOO_CLIENT_SECRET": "test_client_secret",
-            },
-        ):
-            client_id = os.getenv("WAHOO_CLIENT_ID")
-            client_secret = os.getenv("WAHOO_CLIENT_SECRET")
+        monkeypatch.setenv("WAHOO_CLIENT_ID", "test_client_id")
+        monkeypatch.setenv("WAHOO_CLIENT_SECRET", "test_client_secret")
 
-            assert client_id == "test_client_id"
-            assert client_secret == "test_client_secret"
+        client_id = os.getenv("WAHOO_CLIENT_ID")
+        client_secret = os.getenv("WAHOO_CLIENT_SECRET")
+
+        assert client_id == "test_client_id"
+        assert client_secret == "test_client_secret"
 
 
 class TestAuthUrlGeneration:
