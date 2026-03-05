@@ -496,7 +496,8 @@ class WahooAPIClient:
 
 def load_json_schema(schema: str) -> dict:
     """Load a JSON schema from a file."""
-    return json.loads((Path("src/schemas") / schema).read_text())
+    schema_dir = Path(__file__).parent / "schemas"
+    return json.loads((schema_dir / schema).read_text())
 
 
 app = Server("wahoo-mcp")
