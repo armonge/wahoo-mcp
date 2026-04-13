@@ -38,7 +38,7 @@ dev = [
   "pytest-asyncio>=1.0.0",
   "pytest-cov>=6.2.1",
   "pytest-httpx>=0.35.0",
-  "pytest-watcher>=0.4.3",
+  "pytest-watcher>=0.6.3",
 ]
 
 [tool.ruff]
