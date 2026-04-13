@@ -33,7 +33,7 @@ packages = ["src"]
 
 [dependency-groups]
 dev = [
-  "complexipy>=3.2.0",
+  "complexipy>=5.2.0",
   "pre-commit>=4.2.0",
   "pytest-asyncio>=1.0.0",
   "pytest-cov>=6.2.1",
